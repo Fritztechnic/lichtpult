@@ -22,6 +22,8 @@
   import Palette from '@lucide/svelte/icons/palette'
   import Map from '@lucide/svelte/icons/map'
   import Cable from '@lucide/svelte/icons/cable'
+  import Network from '@lucide/svelte/icons/network'
+  import Universes from './lib/Universes.svelte'
   import Monitor from '@lucide/svelte/icons/monitor'
   import Settings from '@lucide/svelte/icons/settings'
   import Undo from '@lucide/svelte/icons/undo-2'
@@ -48,6 +50,7 @@
     ['playback', 'Playback', ListVideo],
     ['plan', 'Stage', Map],
     ['patch', 'Patch', Cable],
+    ['universes', 'Universes', Network],
     ['output', 'Output', Monitor],
   ] as const
 
@@ -141,6 +144,7 @@
         {:else if S.view === 'playback'}<Playback />
         {:else if S.view === 'plan'}<Plan />
         {:else if S.view === 'patch'}<Patch />
+        {:else if S.view === 'universes'}<Universes />
         {:else}<Output />{/if}
       </div>
     </div>

@@ -9,6 +9,7 @@
   import Plan from './Plan.svelte'
   import Patch from './Patch.svelte'
   import Output from './Output.svelte'
+  import Universes from './Universes.svelte'
   import CueValues from './CueValues.svelte'
   import Status from './Status.svelte'
   import FixtureEditor from './FixtureEditor.svelte'
@@ -80,6 +81,7 @@
         {:else if v === 'playback'}<Playback />
         {:else if v === 'plan'}<Plan />
         {:else if v === 'patch'}<Patch />
+        {:else if v === 'universes'}<Universes />
         {:else}<Output />{/if}
       {:else if w.kind === 'cue'}
         {@const c = show.lists[live.active].cues[w.arg]}

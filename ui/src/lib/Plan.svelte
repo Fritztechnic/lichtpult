@@ -1,6 +1,7 @@
 <script lang="ts">
   // Bühnenplan: Fixtures und Dekoration (Props) per Drag & Drop platzieren.
   import { S } from '../store.svelte'
+  import Splitter from './Splitter.svelte'
   import Tool from './Tool.svelte'
   import Info from './Info.svelte'
   import { PROP_KINDS, PROP_LABEL, type Prop } from './types'
@@ -78,7 +79,8 @@
   const hex = (c: [number, number, number] | null) => (c ? '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('') : '#3a3a3a')
 </script>
 
-<div class="plan">
+<div class="plan" style="--w:{S.layout.planW}px">
+  <Splitter key="planW" max={500} />
   <section class="win st">
     <header>
       <Tool icon={Grid3x3} label="Grid" on={grid} onclick={() => (grid = !grid)} />
@@ -143,7 +145,7 @@
 </div>
 
 <style>
-  .plan { display: grid; grid-template-columns: 1fr 250px; gap: 2px; padding: 2px; height: 100%; }
+  .plan { display: grid; grid-template-columns: minmax(0, 1fr) var(--w); position: relative; gap: 2px; padding: 2px; height: 100%; }
   .col { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
   .stage { position: relative; width: min(100%, calc((100vh - 220px) * 1.7)); aspect-ratio: 17/10; background: #070707; border: 1px solid #555; touch-action: none; }
   .stage.grid { background-image: linear-gradient(#1b1b1b 1px, transparent 1px), linear-gradient(90deg, #1b1b1b 1px, transparent 1px); background-size: 5% 5%; background-color: #070707; }

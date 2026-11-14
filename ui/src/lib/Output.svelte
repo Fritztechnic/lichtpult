@@ -2,6 +2,7 @@
   // Ausgabe: Art-Net/sACN-Einstellungen, MIDI-Bindungen und Live-Vorschau der Universen.
   import { S } from '../store.svelte'
   import { call } from '../api'
+  import Splitter from './Splitter.svelte'
   import Info from './Info.svelte'
   import { onMount } from 'svelte'
 
@@ -25,7 +26,8 @@
   const learn = (t: unknown) => call('midi_learn', t)
 </script>
 
-<div class="out">
+<div class="out" style="--w:{S.layout.outW}px">
+  <Splitter key="outW" />
   <section class="win mon">
     <header>
       <div class="title">DMX Output <Info text="Live view of what is sent to the lights, 0–255 per channel. Brighter cells are higher values." /></div>
@@ -72,7 +74,7 @@
 </div>
 
 <style>
-  .out { display: grid; grid-template-columns: 1fr 360px; gap: 2px; padding: 2px; height: 100%; }
+  .out { display: grid; grid-template-columns: minmax(0, 1fr) var(--w); position: relative; gap: 2px; padding: 2px; height: 100%; }
   .col { display: flex; flex-direction: column; gap: 8px; padding: 10px; flex: none; }
   .dmx { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 2px; }
   .c { position: relative; height: 38px; background: color-mix(in srgb, #c03030 calc(var(--v) * 100%), #141414); border: 1px solid #2a2a2a; }

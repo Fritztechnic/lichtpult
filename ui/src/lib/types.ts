@@ -60,5 +60,6 @@ export const WIN_VIEWS = [
   { id: 'status', title: 'Status', w: 380, h: 320 },
   { id: 'plan', title: '2D Plan', w: 700, h: 460 },
   { id: 'patch', title: 'Patch', w: 760, h: 440 },
+  { id: 'universes', title: 'Universes', w: 760, h: 440 },
   { id: 'output', title: 'Output', w: 560, h: 420 },
 ] as const

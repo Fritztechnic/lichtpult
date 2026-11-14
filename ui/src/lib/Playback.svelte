@@ -1,6 +1,7 @@
 <script lang="ts">
   // Playback: Cue-Tabelle der aktiven Cuelist mit Mehrfachauswahl, Drag & Drop
   // und Cuelist-Verzeichnis. Werte in einer markierten Zeile gelten für alle markierten Cues.
+  import Splitter from './Splitter.svelte'
   import { S } from '../store.svelte'
   import Tool from './Tool.svelte'
   import Info from './Info.svelte'
@@ -61,7 +62,8 @@
   const tcolor = (c: { chase: boolean }) => (c.chase ? 'var(--blue)' : 'var(--red)')
 </script>
 
-<div class="pb">
+<div class="pb" style="--w:{S.layout.pbW}px">
+  <Splitter key="pbW" />
   <section class="win cl">
     <header>
       <Tool icon={SkipBack} label="Back" onclick={() => S.play('Back', l)} />
@@ -139,7 +141,7 @@
 </div>
 
 <style>
-  .pb { display: grid; grid-template-columns: 1fr 300px; gap: 2px; padding: 2px; height: 100%; }
+  .pb { display: grid; grid-template-columns: minmax(0, 1fr) var(--w); position: relative; gap: 2px; padding: 2px; height: 100%; }
   .fadebar { height: 4px; background: #000; } .fadebar div { height: 100%; background: var(--orange); }
   .opts { padding: 5px; gap: 6px; align-items: center; }
   .lists { display: flex; flex-direction: column; gap: 3px; }

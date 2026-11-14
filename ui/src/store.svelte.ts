@@ -4,8 +4,9 @@ import { call } from './api'
 import { WIN_VIEWS, type Live, type Show, type FixtureType } from './lib/types'
 
 export type MenuItem = { label?: string; run?: () => unknown; danger?: boolean; disabled?: boolean; sep?: boolean }
-export type Layout = { bankH: number; cw: number; rh: number }
-const DEFAULT_LAYOUT: Layout = { bankH: 190, cw: 0.53, rh: 0.54 }
+// Breiten der rechten Spalten (px) je Ansicht: Patch, Playback, Output, Stage, Universes
+export type Layout = { bankH: number; cw: number; rh: number; patchW: number; pbW: number; outW: number; planW: number; uniW: number }
+export const DEFAULT_LAYOUT: Layout = { bankH: 190, cw: 0.53, rh: 0.54, patchW: 360, pbW: 300, outW: 360, planW: 250, uniW: 320 }
 export type Win = { id: string; kind: 'keypad' | 'view' | 'typedit' | 'cue' | 'list' | 'fx' | 'group' | 'preset' | 'fixture'; arg: number; x: number; y: number; w: number; h: number; z: number }
 
 class Store {

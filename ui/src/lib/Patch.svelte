@@ -3,6 +3,7 @@
   // Die Zeilenauswahl ist dieselbe Auswahl wie in Compose.
   import { S } from '../store.svelte'
   import { call } from '../api'
+  import Splitter from './Splitter.svelte'
   import Tool from './Tool.svelte'
   import Info from './Info.svelte'
   import Plus from '@lucide/svelte/icons/plus'
@@ -81,7 +82,8 @@
   function removeIds(ids: number[]) { for (const id of ids) S.act({ RemoveFixture: id }) }
 </script>
 
-<div class="patch">
+<div class="patch" style="--w:{S.layout.patchW}px">
+  <Splitter key="patchW" />
   <section class="win list">
     <header>
       <Tool icon={Wand} label="Auto Address" onclick={() => S.act({ AutoAddress: universe })} title="Re-address universe {universe} without gaps" />
@@ -139,7 +141,7 @@
 </div>
 
 <style>
-  .patch { display: grid; grid-template-columns: 1fr 360px; gap: 2px; padding: 2px; height: 100%; }
+  .patch { display: grid; grid-template-columns: minmax(0, 1fr) var(--w); position: relative; gap: 2px; padding: 2px; height: 100%; }
   .col { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
   .row > * { flex: 1; }
   .map { display: grid; grid-template-columns: repeat(64, 1fr); gap: 1px; }
