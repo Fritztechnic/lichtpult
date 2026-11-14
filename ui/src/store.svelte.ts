@@ -138,6 +138,21 @@ class Store {
     else this.openWin(kind, arg)
   }
   closeWin(id: string) { this.wins = this.wins.filter((w) => w.id !== id) }
+  // Offene Fenster im Arbeitsbereich (rechts der Navigation, über der Bank) kacheln
+  tileWins() {
+    const n = this.wins.length
+    if (!n) return
+    const x0 = 76, y0 = 36, W = window.innerWidth - x0 - 4, H = window.innerHeight - y0 - this.layout.bankH - 32
+    const cols = Math.ceil(Math.sqrt(n)), rows = Math.ceil(n / cols)
+    this.wins.forEach((w, i) => {
+      w.w = Math.floor(W / cols) - 4; w.h = Math.floor(H / rows) - 4
+      w.x = x0 + (i % cols) * (W / cols); w.y = y0 + Math.floor(i / cols) * (H / rows)
+    })
+  }
+  // Treppenförmig übereinander legen, mit den Standardgrößen
+  cascadeWins() {
+    this.wins.forEach((w, i) => { w.x = 90 + i * 28; w.y = 60 + i * 28 })
+  }
   // Fenster nach vorn holen
   focusWin(id: string) { const w = this.wins.find((x) => x.id === id); if (w) w.z = ++this.z }
 
