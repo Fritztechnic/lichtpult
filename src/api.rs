@@ -244,6 +244,19 @@ impl Core {
                 self.engine.lock().unwrap().load_show(show);
                 Value::Null
             }
+            "show_import_onyx" => {
+                let r: ImportReq = serde_json::from_str(body).map_err(err)?;
+                let (mut show, notes) = crate::onyx::import(&r.bytes)?;
+                show.name = r.name.rsplit_once('.').map_or(r.name.as_str(), |x| x.0).to_string();
+                let summary = json!({
+                    "fixtures": show.fixtures.len(),
+                    "groups": show.groups.len(),
+                    "lists": show.lists.len(),
+                    "notes": notes,
+                });
+                self.engine.lock().unwrap().load_show(show);
+                summary
+            }
             "show_new" => {
                 let name = serde_json::from_str::<String>(body).map_err(err)?;
                 self.engine.lock().unwrap().load_show(Show { name, ..Show::default() });

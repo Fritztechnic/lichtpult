@@ -1,4 +1,19 @@
 <script lang="ts">
+  // Onyx-Show einlesen; das Parsen passiert im Rust-Kern
+  async function importOnyx(e: Event) {
+    const el = e.currentTarget as HTMLInputElement
+    const f = el.files?.[0]
+    if (!f) return
+    try {
+      const bytes = Array.from(new Uint8Array(await f.arrayBuffer()))
+      const r = await call<any>('show_import_onyx', { name: f.name, bytes })
+      S.settings = false
+      S.say(`Imported ${r.fixtures} fixtures, ${r.groups} groups, ${r.lists} cuelists — ${r.notes.join('; ')}`)
+    } catch (err) {
+      S.say(`${f.name}: ${err}`, true)
+    }
+    el.value = ''
+  }
   // Rahmen der Oberfläche: Kopfzeile, linke Navigation, aktive Ansicht, Bank mit Cuelists,
   // Befehlszeile und Dialoge. Alle Bedienung läuft über den Store (`S`) zur Engine.
   import { onMount } from 'svelte'
@@ -245,6 +260,10 @@
             {#each shows as n}<button class="btn" onclick={async () => { await call('show_load', n); S.settings = false; S.say('Loaded ' + n) }}>{n}</button>{/each}
           </div>
           {#if !shows.length}<div class="dim">No saved shows yet.</div>{/if}
+          <div class="dim">Import</div>
+          <label class="btn" style="cursor:pointer;text-align:center">Import Onyx show…
+            <input type="file" accept=".OnyxShow,.zip" hidden onchange={importOnyx} />
+          </label>
           <div class="dim" style="font-size:11px">Shortcuts: Space Go · Tab Back · Home Snap · End Release · Delete Clear · PgUp/PgDn prev/next fixture · Ctrl+P Blind · Ctrl+Z/Y Undo/Redo · Ctrl+L command line</div>
         </div>
       </div>
