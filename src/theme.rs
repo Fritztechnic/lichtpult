@@ -75,7 +75,7 @@ pub fn caption(ui: &mut egui::Ui, text: &str) {
 pub fn attr_tint(a: lichtpult::fixture::Attr, accent: Color32) -> Color32 {
     use lichtpult::fixture::Attr::*;
     match a {
-        Dimmer => Color32::from_rgb(235, 235, 240),
+        Dimmer | L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 => Color32::from_rgb(235, 235, 240),
         Red => Color32::from_rgb(255, 70, 70),
         Green => Color32::from_rgb(60, 220, 110),
         Blue => Color32::from_rgb(70, 120, 255),

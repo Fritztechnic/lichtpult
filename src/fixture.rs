@@ -15,6 +15,15 @@ pub enum Attr {
     Tilt,
     Zoom,
     Strobe,
+    /// Einzeln dimmbare Lichter eines Geräts (z. B. Lichtorgel).
+    L1,
+    L2,
+    L3,
+    L4,
+    L5,
+    L6,
+    L7,
+    L8,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -26,7 +35,7 @@ pub enum Kind {
 }
 
 impl Attr {
-    pub const ALL: [Attr; 11] = [
+    pub const ALL: [Attr; 19] = [
         Attr::Dimmer,
         Attr::Red,
         Attr::Green,
@@ -38,6 +47,14 @@ impl Attr {
         Attr::Tilt,
         Attr::Zoom,
         Attr::Strobe,
+        Attr::L1,
+        Attr::L2,
+        Attr::L3,
+        Attr::L4,
+        Attr::L5,
+        Attr::L6,
+        Attr::L7,
+        Attr::L8,
     ];
 
     pub fn name(self) -> &'static str {
@@ -53,12 +70,20 @@ impl Attr {
             Attr::Tilt => "Tilt",
             Attr::Zoom => "Zoom",
             Attr::Strobe => "Strobe",
+            Attr::L1 => "Licht 1",
+            Attr::L2 => "Licht 2",
+            Attr::L3 => "Licht 3",
+            Attr::L4 => "Licht 4",
+            Attr::L5 => "Licht 5",
+            Attr::L6 => "Licht 6",
+            Attr::L7 => "Licht 7",
+            Attr::L8 => "Licht 8",
         }
     }
 
     pub fn kind(self) -> Kind {
         match self {
-            Attr::Dimmer => Kind::Intensity,
+            Attr::Dimmer | Attr::L1 | Attr::L2 | Attr::L3 | Attr::L4 | Attr::L5 | Attr::L6 | Attr::L7 | Attr::L8 => Kind::Intensity,
             Attr::Red | Attr::Green | Attr::Blue | Attr::White | Attr::Amber | Attr::Uv => Kind::Color,
             Attr::Pan | Attr::Tilt => Kind::Position,
             Attr::Zoom | Attr::Strobe => Kind::Beam,
@@ -103,7 +128,7 @@ pub fn builtin_types() -> Vec<FixtureType> {
         t("RGBW", &[Red, Green, Blue, White]),
         t("Dimmer + RGB", &[Dimmer, Red, Green, Blue]),
         t("Moving Head", &[Pan, Tilt, Dimmer, Red, Green, Blue, White, Zoom]),
-        t("Uking Lichtorgel (4 Kanäle, dann 8x Dimmer)", &[Pan, Tilt, Dimmer, Strobe]),
+        t("Uking Lichtorgel (12 Kanäle)", &[Pan, Tilt, Dimmer, Strobe, L1, L2, L3, L4, L5, L6, L7, L8]),
     ]
 }
 
