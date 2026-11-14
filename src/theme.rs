@@ -71,3 +71,67 @@ pub fn tile(ui: &mut egui::Ui, text: impl Into<String>, on: bool, accent: Color3
 pub fn caption(ui: &mut egui::Ui, text: &str) {
     ui.label(egui::RichText::new(text.to_uppercase()).small().color(MUTED).strong());
 }
+
+pub fn attr_tint(a: lichtpult::fixture::Attr, accent: Color32) -> Color32 {
+    use lichtpult::fixture::Attr::*;
+    match a {
+        Dimmer => Color32::from_rgb(235, 235, 240),
+        Red => Color32::from_rgb(255, 70, 70),
+        Green => Color32::from_rgb(60, 220, 110),
+        Blue => Color32::from_rgb(70, 120, 255),
+        White => Color32::from_rgb(245, 245, 245),
+        Amber => Color32::from_rgb(255, 170, 40),
+        Uv => Color32::from_rgb(150, 80, 255),
+        Pan | Tilt | Zoom => accent,
+    }
+}
+
+pub enum Fader {
+    None,
+    Set(u8),
+    Reset,
+}
+
+/// Vertikaler Fader. `set` = Wert kommt aus dem Programmer (hell), sonst aus dem Cue (gedimmt).
+/// Doppelklick gibt den Programmer-Wert frei.
+pub fn fader(ui: &mut egui::Ui, label: &str, value: u8, tint: Color32, set: bool) -> Fader {
+    let mut out = Fader::None;
+    ui.vertical(|ui| {
+        ui.set_width(58.0);
+        ui.vertical_centered(|ui| {
+            ui.label(egui::RichText::new(format!("{}%", (value as u32 * 100 + 127) / 255)).monospace().color(if set { TEXT } else { MUTED }));
+        });
+        let (rect, r) = ui.allocate_exact_size(egui::vec2(58.0, 180.0), egui::Sense::click_and_drag());
+        let p = ui.painter();
+        p.rect_filled(rect, 6.0, Color32::from_rgb(22, 22, 26));
+        let h = rect.height() * value as f32 / 255.0;
+        let fill = egui::Rect::from_min_max(egui::pos2(rect.left(), rect.bottom() - h), rect.right_bottom());
+        p.rect_filled(fill, 6.0, if set { tint } else { tint.gamma_multiply(0.3) });
+        let border = if r.hovered() || r.dragged() { tint } else { LINE };
+        p.rect_stroke(rect, 6.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+        if r.double_clicked() {
+            out = Fader::Reset;
+        } else if r.is_pointer_button_down_on() {
+            if let Some(pos) = r.interact_pointer_pos() {
+                let k = ((rect.bottom() - pos.y) / rect.height()).clamp(0.0, 1.0);
+                out = Fader::Set((k * 255.0).round() as u8);
+            }
+        }
+        ui.vertical_centered(|ui| ui.label(egui::RichText::new(label).small().color(MUTED)));
+    });
+    out
+}
+
+/// Karte mit Titel für zusammengehörige Bedienelemente.
+pub fn card<R>(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    egui::Frame::new()
+        .fill(Color32::from_rgb(14, 14, 17))
+        .stroke(Stroke::new(1.0, LINE))
+        .corner_radius(8)
+        .inner_margin(10)
+        .show(ui, |ui| {
+            caption(ui, title);
+            add(ui)
+        })
+        .inner
+}

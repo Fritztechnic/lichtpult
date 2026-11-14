@@ -89,6 +89,21 @@ pub enum Action {
     GotoCue(usize),
     SetCueFade(usize, f32),
     DeleteCue(usize),
+    RenameCue(usize, String),
+    /// Programmer-Werte in den Cue übernehmen.
+    UpdateCue(usize),
+    RenameGroup(usize, String),
+    DeleteGroup(usize),
+    /// Gruppe mit der aktuellen Auswahl überschreiben.
+    UpdateGroup(usize),
+    RenamePalette(usize, String),
+    DeletePalette(usize),
+    /// Palette mit den aktuellen Programmer-Werten überschreiben.
+    UpdatePalette(usize),
+    /// Attribut der ausgewählten Fixtures aus dem Programmer entfernen.
+    ReleaseAttr(Attr),
+    RenameFixture(u32, String),
+    SetPatch { id: u32, universe: u16, address: u16 },
     Blackout(bool),
     Master(u8),
     AddFixtures { ty: usize, count: u16, universe: u16, address: u16 },
@@ -169,6 +184,38 @@ impl Engine {
         self.cue = cue;
     }
 
+    /// Cue-Zustand ohne Fade neu berechnen (nach Änderungen an Cues).
+    fn refresh_playback(&mut self) {
+        if let Some(c) = self.cue {
+            self.to = self.state_at(c);
+            self.fade_time = 0.0;
+        }
+    }
+
+    fn programmer_values(&self, kind: Kind) -> BTreeMap<Attr, u8> {
+        self.selection
+            .iter()
+            .filter_map(|id| self.programmer.get(id))
+            .flat_map(|m| m.iter())
+            .filter(|(a, _)| a.kind() == kind)
+            .map(|(a, v)| (*a, *v))
+            .collect()
+    }
+
+    /// Anzeigewert eines Attributs (Programmer vor Cue) und ob er aus dem Programmer stammt.
+    pub fn value_of(&self, play: &Values, id: u32, a: Attr) -> (u8, bool) {
+        match self.programmer.get(&id).and_then(|m| m.get(&a)) {
+            Some(&v) => (v, true),
+            None => (get(play, id, a), false),
+        }
+    }
+
+    /// Tatsächlich ausgegebener DMX-Wert (inkl. Master/Blackout).
+    pub fn output_of(&self, f: &Fixture, a: Attr) -> u8 {
+        let Some(i) = self.show.channels(f).iter().position(|c| *c == Some(a)) else { return 0 };
+        self.frames.get(&f.universe).and_then(|fr| fr.get(f.address as usize - 1 + i)).copied().unwrap_or(0)
+    }
+
     pub fn apply(&mut self, action: Action) {
         match action {
             Action::Select(id) => {
@@ -201,17 +248,64 @@ impl Engine {
                 }
             }
             Action::RecordPalette(kind) => {
-                let values: BTreeMap<Attr, u8> = self
-                    .selection
-                    .iter()
-                    .filter_map(|id| self.programmer.get(id))
-                    .flat_map(|m| m.iter())
-                    .filter(|(a, _)| a.kind() == kind)
-                    .map(|(a, v)| (*a, *v))
-                    .collect();
+                let values = self.programmer_values(kind);
                 if !values.is_empty() {
                     let name = format!("{} {}", kind.name(), self.show.palettes.iter().filter(|p| p.kind == kind).count() + 1);
                     self.show.palettes.push(Palette { name, kind, values });
+                }
+            }
+            Action::UpdatePalette(i) => {
+                if let Some(kind) = self.show.palettes.get(i).map(|p| p.kind) {
+                    let values = self.programmer_values(kind);
+                    if !values.is_empty() {
+                        self.show.palettes[i].values = values;
+                    }
+                }
+            }
+            Action::RenamePalette(i, n) => {
+                if let Some(p) = self.show.palettes.get_mut(i) {
+                    p.name = n;
+                }
+            }
+            Action::DeletePalette(i) => {
+                if i < self.show.palettes.len() {
+                    self.show.palettes.remove(i);
+                }
+            }
+            Action::RenameGroup(i, n) => {
+                if let Some(g) = self.show.groups.get_mut(i) {
+                    g.name = n;
+                }
+            }
+            Action::DeleteGroup(i) => {
+                if i < self.show.groups.len() {
+                    self.show.groups.remove(i);
+                }
+            }
+            Action::UpdateGroup(i) => {
+                if let (Some(g), false) = (self.show.groups.get_mut(i), self.selection.is_empty()) {
+                    g.ids = self.selection.iter().copied().collect();
+                }
+            }
+            Action::ReleaseAttr(a) => {
+                for id in &self.selection {
+                    if let Some(m) = self.programmer.get_mut(id) {
+                        m.remove(&a);
+                    }
+                }
+                self.programmer.retain(|_, m| !m.is_empty());
+            }
+            Action::RenameFixture(id, n) => {
+                if let Some(f) = self.show.fixtures.iter_mut().find(|f| f.id == id) {
+                    f.name = n;
+                }
+            }
+            Action::SetPatch { id, universe, address } => {
+                if let Some(i) = self.show.fixtures.iter().position(|f| f.id == id) {
+                    let width = self.show.channels(&self.show.fixtures[i]).len() as u16;
+                    let f = &mut self.show.fixtures[i];
+                    f.universe = universe.max(1);
+                    f.address = address.clamp(1, (CHANNELS as u16 + 1).saturating_sub(width).max(1));
                 }
             }
             Action::ApplyPalette(i) => {
@@ -251,7 +345,27 @@ impl Engine {
             Action::DeleteCue(i) => {
                 if i < self.show.cues.len() {
                     self.show.cues.remove(i);
-                    self.goto(None);
+                    match self.cue {
+                        Some(c) if c == i => self.goto(None),
+                        Some(c) if c > i => {
+                            self.cue = Some(c - 1);
+                            self.refresh_playback();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Action::RenameCue(i, n) => {
+                if let Some(c) = self.show.cues.get_mut(i) {
+                    c.name = n;
+                }
+            }
+            Action::UpdateCue(i) => {
+                if let Some(c) = self.show.cues.get_mut(i) {
+                    for (&id, attrs) in &self.programmer {
+                        c.values.entry(id).or_default().extend(attrs);
+                    }
+                    self.refresh_playback();
                 }
             }
             Action::Blackout(b) => self.blackout = b,
@@ -267,7 +381,7 @@ impl Engine {
                     }
                     self.show.fixtures.push(Fixture {
                         id: next_id,
-                        name: format!("{name} {next_id}"),
+                        name: format!("{} {next_id}", name.split(" (").next().unwrap_or(&name)),
                         ty,
                         universe,
                         address: address as u16,
@@ -390,6 +504,38 @@ mod tests {
         e.tick(5.0);
         assert_eq!(e.frames[&1][0], 100); // Dimmer wird getrackt
         assert_eq!(e.frames[&1][1], 50);
+    }
+
+    #[test]
+    fn manage_palettes_cues_and_release() {
+        let mut e = engine();
+        e.apply(Action::SelectAll);
+        e.apply(Action::SetAttr(Attr::Red, 10));
+        e.apply(Action::RecordPalette(Kind::Color));
+        e.apply(Action::RenamePalette(0, "Rot".into()));
+        e.apply(Action::SetAttr(Attr::Red, 99));
+        e.apply(Action::UpdatePalette(0));
+        assert_eq!(e.show.palettes[0].values[&Attr::Red], 99);
+        e.apply(Action::DeletePalette(0));
+        assert!(e.show.palettes.is_empty());
+
+        e.apply(Action::RecordCue);
+        e.apply(Action::ReleaseAttr(Attr::Red));
+        assert!(e.programmer.is_empty());
+        e.apply(Action::Go);
+        e.apply(Action::SetAttr(Attr::Red, 7));
+        e.apply(Action::UpdateCue(0));
+        e.tick(0.0);
+        assert_eq!(e.frames[&1][1], 7);
+        e.apply(Action::DeleteCue(0));
+        assert_eq!(e.cue, None);
+    }
+
+    #[test]
+    fn set_patch_clamps_to_universe() {
+        let mut e = engine();
+        e.apply(Action::SetPatch { id: 1, universe: 0, address: 600 });
+        assert_eq!((e.show.fixtures[0].universe, e.show.fixtures[0].address), (1, 509));
     }
 
     #[test]
