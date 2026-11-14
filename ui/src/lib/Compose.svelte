@@ -236,10 +236,10 @@
 </script>
 
 <svelte:window onkeydown={fkey} onpointerup={() => (dragging = false)} />
-<div class="compose" class:solo={part !== 'all'} bind:this={box} style="--cw:{S.layout.cw};--rh:{S.layout.rh};--cf:{S.layout.cw}fr;--cg:{1 - S.layout.cw}fr;--rf:{S.layout.rh}fr;--rg:{1 - S.layout.rh}fr">
+<div class="compose" class:solo={part !== 'all'} bind:this={box} style="--sx:{S.layout.cw};--sy:{S.layout.rh};--cf:{S.layout.cw}fr;--cg:{1 - S.layout.cw}fr;--rf:{S.layout.rh}fr;--rg:{1 - S.layout.rh}fr">
   {#if part === 'all'}
-    <div class="hs" role="separator" aria-orientation="vertical" title="Ziehen: Spaltenbreite ändern, Doppelklick: zurücksetzen" style="left:calc(var(--cw) * 100%)" onpointerdown={dragCol} ondblclick={() => { S.layout.cw = 0.53; S.saveLayout() }}></div>
-    <div class="vs" role="separator" aria-orientation="horizontal" title="Ziehen: Zeilenhöhe ändern, Doppelklick: zurücksetzen" style="top:calc(var(--rh) * 100%);width:calc(var(--cw) * 100%)" onpointerdown={dragRow} ondblclick={() => { S.layout.rh = 0.54; S.saveLayout() }}></div>
+    <div class="hs" role="separator" aria-orientation="vertical" title="Ziehen: Spaltenbreite ändern, Doppelklick: zurücksetzen" style="left:calc(var(--sx) * 100%)" onpointerdown={dragCol} ondblclick={() => { S.layout.cw = 0.53; S.saveLayout() }}></div>
+    <div class="vs" role="separator" aria-orientation="horizontal" title="Ziehen: Zeilenhöhe ändern, Doppelklick: zurücksetzen" style="top:calc(var(--sy) * 100%);width:calc(var(--sx) * 100%)" onpointerdown={dragRow} ondblclick={() => { S.layout.rh = 0.54; S.saveLayout() }}></div>
   {/if}
   {#if part === 'all' || part === 'fc'}
   <section class="win fc">
