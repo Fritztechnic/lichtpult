@@ -23,6 +23,15 @@
   const list = $derived(show.lists[l])
   const player = $derived(live.players[l])
   let row = $state<number | null>(null)
+  let rows = $state<number[]>([])
+  function pick(e: MouseEvent, i: number) {
+    if ((e.target as HTMLElement).closest('input,button')) return
+    if (e.shiftKey && row != null) { const [a, b] = [Math.min(row, i), Math.max(row, i)]; rows = Array.from({ length: b - a + 1 }, (_, k) => a + k); return }
+    if (e.ctrlKey || e.metaKey) rows = rows.includes(i) ? rows.filter((x) => x !== i) : [...rows, i]
+    else rows = [i]
+    row = i
+  }
+  const each = (ids: number[], mk: (i: number) => any, desc = false) => { for (const i of [...ids].sort((a, b) => (desc ? b - a : a - b))) S.act(mk(i)) }
   let dragFrom = $state<number | null>(null)
   let dragOver = $state<number | null>(null)
 
@@ -64,9 +73,9 @@
         <thead><tr><th style="width:26px"></th><th style="width:44px">No</th><th>Name</th><th style="width:80px">Trigger</th><th style="width:70px">Delay</th><th style="width:70px">Fade</th><th style="width:90px">Type</th><th>Comment</th></tr></thead>
         <tbody>
           {#each list.cues as c, i}
-            <tr class:sel={row === i} class:cur={player?.cue === i} class:drop={dragOver === i && dragFrom !== i}
-              onclick={() => (row = i)} ondblclick={() => S.act({ GotoCue: i })}
-              oncontextmenu={(e) => { row = i; S.menu(e, [{ label: 'Go to cue', run: () => S.act({ GotoCue: i }) }, { label: 'Edit…', run: () => S.openWin('cue', i) }, { label: 'Update from programmer', run: () => S.act({ UpdateCue: i }) }, { label: 'Duplicate', run: () => S.act({ DuplicateCue: i }) }, { label: 'Move up', disabled: i === 0, run: () => S.act({ MoveCue: [i, i - 1] }) }, { label: 'Move down', disabled: i === list.cues.length - 1, run: () => S.act({ MoveCue: [i, i + 1] }) }, { sep: true }, { label: 'Delete', danger: true, run: () => { S.act({ DeleteCue: i }); row = null } }]) }}
+            <tr class:sel={rows.includes(i)} class:cur={player?.cue === i} class:drop={dragOver === i && dragFrom !== i}
+              onclick={(e) => pick(e, i)} ondblclick={() => S.act({ GotoCue: i })}
+              oncontextmenu={(e) => { if (!rows.includes(i)) { rows = [i]; row = i } const t = rows, n = t.length; S.menu(e, [{ label: 'Go to cue', disabled: n > 1, run: () => S.act({ GotoCue: i }) }, { label: 'Edit…', disabled: n > 1, run: () => S.openWin('cue', i) }, { label: 'Update from programmer', run: () => each(t, (x) => ({ UpdateCue: x })) }, { label: n > 1 ? `Duplicate ${n} cues` : 'Duplicate', run: () => each(t, (x) => ({ DuplicateCue: x }), true) }, { label: 'Move up', disabled: n > 1 || i === 0, run: () => S.act({ MoveCue: [i, i - 1] }) }, { label: 'Move down', disabled: n > 1 || i === list.cues.length - 1, run: () => S.act({ MoveCue: [i, i + 1] }) }, { label: 'Select all', run: () => (rows = list.cues.map((_, k) => k)) }, { sep: true }, { label: n > 1 ? `Delete ${n} cues` : 'Delete', danger: true, run: () => { each(t, (x) => ({ DeleteCue: x }), true); rows = []; row = null } }]) }}
               ondragover={(e) => { e.preventDefault(); dragOver = i }} ondrop={() => drop(i)}>
               <td draggable="true" ondragstart={(e) => { dragFrom = i; e.dataTransfer?.setData('text/plain', String(i)) }} ondragend={() => (dragFrom = dragOver = null)} style="cursor:grab;color:#777"><GripVertical size={14} /></td>
               <td class="num mono">{i + 1}</td>

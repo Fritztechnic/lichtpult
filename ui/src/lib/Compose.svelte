@@ -259,7 +259,7 @@
         <thead><tr><th style="width:44px">ID</th><th>Name</th>{#each progCols as a}<th>{ATTR_LABEL[a] ?? a}</th>{/each}</tr></thead>
         <tbody>
           {#each progRows as id}
-            <tr class:sel={sel.has(id)} oncontextmenu={(e) => S.menu(e, [{ label: 'Select fixture', run: () => S.act({ Select: id }) }, { label: 'Clear programmer', danger: true, run: () => S.act('ClearProgrammer') }])}>
+            <tr class:sel={sel.has(id)} onclick={(e) => { if ((e.target as HTMLElement).closest('input,button')) return; if (e.shiftKey && live.last_selected != null) S.act({ SelectRange: [live.last_selected, id] }); else if (e.ctrlKey || e.metaKey) S.act({ Toggle: id }); else S.act({ Select: id }) }} oncontextmenu={(e) => S.menu(e, [{ label: 'Select fixture', run: () => S.act({ Select: id }) }, { label: 'Clear programmer', danger: true, run: () => S.act('ClearProgrammer') }])}>
               <td style="background:#16401f" class="mono">{id}</td><td>{fxName(id)}</td>
               {#each progCols as a}<td class="num mono">{live.programmer[id]?.[a] != null ? pct(live.programmer[id][a]) : ''}</td>{/each}
             </tr>

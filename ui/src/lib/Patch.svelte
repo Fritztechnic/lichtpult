@@ -69,6 +69,14 @@
     return m
   }
   const num = (v: string) => Math.max(1, parseInt(v) || 1)
+  function pick(e: MouseEvent, id: number) {
+    if ((e.target as HTMLElement).closest('input,button')) return
+    if (e.shiftKey && live.last_selected != null) S.act({ SelectRange: [live.last_selected, id] })
+    else if (e.ctrlKey || e.metaKey) S.act({ Toggle: id })
+    else S.act({ Select: id })
+  }
+  const targets = (id: number) => (live.selection.includes(id) ? live.selection : [id])
+  function removeIds(ids: number[]) { for (const id of ids) S.act({ RemoveFixture: id }) }
 </script>
 
 <div class="patch">
@@ -83,8 +91,8 @@
         <thead><tr><th style="width:56px">ID</th><th>Name</th><th>Type</th><th style="width:60px">Ch</th><th style="width:80px">Univ</th><th style="width:80px">Addr</th><th style="width:40px"></th></tr></thead>
         <tbody>
           {#each rows as f}
-            <tr class:sel={live.selection.includes(f.id)} oncontextmenu={(e) => S.menu(e, [{ label: 'Select', run: () => S.act({ Select: f.id }) }, { label: 'Edit…', run: () => S.openWin('fixture', f.id) }, { sep: true }, { label: 'Remove fixture', danger: true, run: () => S.act({ RemoveFixture: f.id }) }])}>
-              <td class="num mono" onclick={() => S.act({ Toggle: f.id })}>{f.id}</td>
+            <tr class:sel={live.selection.includes(f.id)} onclick={(e) => pick(e, f.id)} oncontextmenu={(e) => { if (!live.selection.includes(f.id)) S.act({ Select: f.id }); const t = targets(f.id); S.menu(e, [{ label: 'Select all', run: () => S.act('SelectAll') }, { label: 'Deselect all', run: () => S.act('ClearSelection') }, { label: 'Edit…', run: () => S.openWin('fixture', f.id) }, { sep: true }, { label: t.length > 1 ? `Remove ${t.length} fixtures` : 'Remove fixture', danger: true, run: () => removeIds(t) }]) }}>
+              <td class="num mono">{f.id}</td>
               <td><input value={f.name} onchange={(e) => S.act({ RenameFixture: [f.id, e.currentTarget.value] })} /></td>
               <td class="dim">{show.types[f.ty]?.name}</td>
               <td class="mono">{show.types[f.ty]?.channels.length}</td>
