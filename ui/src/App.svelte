@@ -57,6 +57,7 @@
   const live = $derived(S.live)
   const show = $derived(S.show)
   const act = $derived(live?.active ?? 0)
+  const nUni = $derived(new Set(show?.fixtures.map((f) => f.universe)).size)
 
   async function runCmd() {
     if (!S.cmdText.trim()) return
@@ -206,7 +207,8 @@
       <Terminal size={16} />
       <span class="mode" class:blind={live.blind}>{live.blind ? 'BLIND' : 'LIVE'}</span>
       <input bind:this={cmdEl} bind:value={S.cmdText} placeholder="Command line, e.g. 1 thru 8 at 50  ·  Ctrl+L" onkeydown={(e) => (e.key === 'Enter' ? runCmd() : hist(e))} />
-      <span class="dim sel">{live.selection.length} sel · cue {live.players[act]?.cue != null ? live.players[act].cue! + 1 : '–'}</span>
+      {#if live.conflicts.length}<button class="warnb" onclick={() => (S.view = 'universes')} title="Show universes">⚠ {live.conflicts.length} overlapping</button>{/if}
+      <span class="dim sel">{show.fixtures.length} fixtures · {nUni} universe{nUni === 1 ? '' : 's'} · {live.selection.length} sel · cue {live.players[act]?.cue != null ? live.players[act].cue! + 1 : '–'}</span>
     </div>
   </div>
 
@@ -290,6 +292,7 @@
   .bfoot { font-size: 10px; color: var(--dim); text-align: center; }
   .cmdl { display: flex; align-items: center; gap: 8px; padding: 0 8px; background: #050505; border-top: 1px solid var(--line); }
   .cmdl input { flex: 1; background: #000; height: 20px; }
+  .warnb { color: var(--yellow); font-size: 11px; padding: 0 8px; }
   .mode { font-size: 10px; font-weight: 700; padding: 1px 8px; background: var(--btn-green); } .mode.blind { background: var(--btn-red); }
   .sel { font-size: 10px; }
 </style>
