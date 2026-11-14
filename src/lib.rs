@@ -46,9 +46,38 @@ pub fn spawn_engine(engine: Shared, target: &'static str) {
     });
 }
 
-pub fn show_path() -> std::path::PathBuf {
+pub fn data_dir() -> std::path::PathBuf {
     let home = std::env::var_os("HOME").unwrap_or_default();
-    std::path::Path::new(&home).join(".local/share/lichtpult/show.json")
+    std::path::Path::new(&home).join(".local/share/lichtpult")
+}
+
+pub fn show_path() -> std::path::PathBuf {
+    data_dir().join("show.json")
+}
+
+/// Importierte Fixture-Typen (unabhängig von der Show).
+pub fn load_library() -> Vec<fixture::FixtureType> {
+    std::fs::read(data_dir().join("library.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_library(lib: &[fixture::FixtureType]) -> std::io::Result<()> {
+    std::fs::create_dir_all(data_dir())?;
+    std::fs::write(data_dir().join("library.json"), serde_json::to_vec(lib)?)
+}
+
+/// Alle `.json`-Dateien unter `path` (Datei oder Ordner, rekursiv).
+pub fn json_files(path: &std::path::Path) -> Vec<std::path::PathBuf> {
+    if path.is_dir() {
+        let Ok(rd) = std::fs::read_dir(path) else { return vec![] };
+        rd.flatten().flat_map(|e| json_files(&e.path())).collect()
+    } else if path.extension().is_some_and(|e| e == "json") {
+        vec![path.to_path_buf()]
+    } else {
+        vec![]
+    }
 }
 
 pub fn save_show(show: &Show) -> std::io::Result<()> {

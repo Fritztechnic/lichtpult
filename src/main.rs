@@ -2,8 +2,8 @@ mod theme;
 
 use eframe::egui::{self, Color32, RichText};
 use lichtpult::engine::{Action, Engine, Show};
-use lichtpult::fixture::{Attr, Kind, TYPES};
-use lichtpult::{Shared, load_show, save_show, spawn_engine};
+use lichtpult::fixture::{Attr, FixtureType, Kind, builtin_types, import_ofl};
+use lichtpult::{Shared, json_files, load_library, load_show, save_library, save_show, spawn_engine};
 use std::sync::{Arc, Mutex};
 use theme::{caption, tile};
 
@@ -22,12 +22,20 @@ struct App {
     saved_accent: [u8; 3],
     status: String,
     patch: (usize, u16, u16, u16),
+    library: Vec<FixtureType>,
+    search: String,
+    import_path: String,
+    frames: u32,
     out_universe: u16,
     pending_load: Option<Show>,
 }
 
 fn accent_path() -> std::path::PathBuf {
     lichtpult::show_path().with_file_name("accent")
+}
+
+fn short(s: &str, n: usize) -> String {
+    if s.chars().count() <= n { s.into() } else { format!("{}…", s.chars().take(n - 1).collect::<String>()) }
 }
 
 impl App {
@@ -38,18 +46,69 @@ impl App {
             .unwrap_or(theme::PRESETS[0]);
         App {
             engine,
-            view: View::Programmer,
+            view: match std::env::var("LICHTPULT_VIEW").as_deref() {
+                Ok("cues") => View::Cues,
+                Ok("patch") => View::Patch,
+                Ok("output") => View::Output,
+                _ => View::Programmer,
+            },
+            frames: 0,
             accent,
             saved_accent: accent,
             status: String::new(),
             patch: (1, 1, 1, 1),
+            library: [builtin_types(), load_library()].concat(),
+            search: String::new(),
+            import_path: String::new(),
             out_universe: 1,
             pending_load: None,
         }
     }
 
+    /// Entwicklungshilfe: `LICHTPULT_SHOT=datei.ppm [LICHTPULT_SELECT=1]` speichert
+    /// den Fensterinhalt (unabhängig von anderen Fenstern) und beendet die App.
+    fn dev_screenshot(&mut self, ctx: &egui::Context) {
+        let Some(path) = std::env::var_os("LICHTPULT_SHOT") else { return };
+        self.frames += 1;
+        if self.frames == 3 && std::env::var_os("LICHTPULT_SELECT").is_some() {
+            self.engine.lock().unwrap().apply(Action::SelectAll);
+        }
+        if self.frames == 8 {
+            let ctx2 = ctx.clone();
+            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::ScreenshotCallback::new(move |img| {
+                let mut out = format!("P6\n{} {}\n255\n", img.width(), img.height()).into_bytes();
+                out.extend(img.pixels.iter().flat_map(|p| [p.r(), p.g(), p.b()]));
+                let _ = std::fs::write(path, out);
+                ctx2.send_viewport_cmd(egui::ViewportCommand::Close);
+            })));
+        }
+    }
+
     fn accent(&self) -> Color32 {
         Color32::from_rgb(self.accent[0], self.accent[1], self.accent[2])
+    }
+
+    /// Importiert OFL-Dateien oder Ordner in die Bibliothek.
+    fn import(&mut self, paths: Vec<std::path::PathBuf>) {
+        let (mut added, mut failed) = (0, 0);
+        for file in paths.iter().flat_map(|p| json_files(p)) {
+            match std::fs::read_to_string(&file).map_err(|e| e.to_string()).and_then(|s| import_ofl(&s)) {
+                Ok(types) => {
+                    for t in types {
+                        if !self.library.iter().any(|x| x.name == t.name) {
+                            self.library.push(t);
+                            added += 1;
+                        }
+                    }
+                }
+                Err(_) => failed += 1,
+            }
+        }
+        let user = &self.library[builtin_types().len()..];
+        self.status = match save_library(user) {
+            Ok(()) => format!("{added} Typen importiert, {failed} Dateien übersprungen"),
+            Err(err) => format!("Bibliothek nicht gespeichert: {err}"),
+        };
     }
 
     fn top_bar(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
@@ -118,7 +177,7 @@ impl App {
         ui.horizontal_wrapped(|ui| {
             for f in &e.show.fixtures {
                 let on = e.selection.contains(&f.id);
-                let r = tile(ui, format!("{}\n{}", f.id, TYPES[f.ty].name), on, accent);
+                let r = tile(ui, format!("{}\n{}", f.id, short(&e.show.types[f.ty].name, 11)), on, accent);
                 if r.clicked() {
                     acts.push(if ui.input(|i| i.modifiers.command || i.modifiers.shift) {
                         Action::Toggle(f.id)
@@ -163,19 +222,10 @@ impl App {
         }
         let sel: Vec<_> = e.show.fixtures.iter().filter(|f| e.selection.contains(&f.id)).collect();
         for kind in Kind::ALL {
-            let attrs: Vec<Attr> = [
-                Attr::Dimmer,
-                Attr::Red,
-                Attr::Green,
-                Attr::Blue,
-                Attr::White,
-                Attr::Pan,
-                Attr::Tilt,
-                Attr::Zoom,
-            ]
-            .into_iter()
-            .filter(|a| a.kind() == kind && sel.iter().any(|f| f.channels().contains(a)))
-            .collect();
+            let attrs: Vec<_> = Attr::ALL
+                .into_iter()
+                .filter(|a| a.kind() == kind && sel.iter().any(|f| e.show.has(f, *a)))
+                .collect();
             if attrs.is_empty() {
                 continue;
             }
@@ -183,7 +233,7 @@ impl App {
                 ui.vertical(|ui| {
                     caption(ui, kind.name());
                     for a in &attrs {
-                        let first = sel.iter().find(|f| f.channels().contains(a)).unwrap();
+                        let first = sel.iter().find(|f| e.show.has(f, *a)).unwrap();
                         let mut v = e.programmer.get(&first.id).and_then(|m| m.get(a)).copied().unwrap_or(0);
                         if ui.add(egui::Slider::new(&mut v, 0..=255).text(a.name())).changed() {
                             acts.push(Action::SetAttr(*a, v));
@@ -236,35 +286,55 @@ impl App {
     }
 
     fn patch(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
-        caption(ui, "Fixtures hinzufügen");
+        caption(ui, "Fixture-Bibliothek");
         ui.horizontal(|ui| {
-            egui::ComboBox::from_id_salt("type").selected_text(TYPES[self.patch.0].name).show_ui(ui, |ui| {
-                for (i, t) in TYPES.iter().enumerate() {
-                    ui.selectable_value(&mut self.patch.0, i, t.name);
-                }
-            });
+            ui.add(egui::TextEdit::singleline(&mut self.search).hint_text("Suchen…").desired_width(220.0));
+            ui.add(egui::TextEdit::singleline(&mut self.import_path).hint_text("OFL-Datei/Ordner (oder hierher ziehen)").desired_width(320.0));
+            if ui.button("Importieren").clicked() {
+                let p = std::path::PathBuf::from(self.import_path.trim());
+                self.import(vec![p]);
+            }
+        });
+        let q = self.search.to_lowercase();
+        let hits: Vec<usize> = (0..self.library.len())
+            .filter(|&i| self.library[i].name.to_lowercase().contains(&q))
+            .collect();
+        egui::ScrollArea::vertical().id_salt("lib").max_height(240.0).show(ui, |ui| {
+            for &i in hits.iter().take(200) {
+                let ch = self.library[i].channels.len();
+                ui.selectable_value(&mut self.patch.0, i, format!("{}  ·  {ch} Kanäle", self.library[i].name));
+            }
+            if hits.len() > 200 {
+                ui.label(RichText::new(format!("… {} weitere – Suche eingrenzen", hits.len() - 200)).color(theme::MUTED));
+            }
+        });
+        ui.horizontal(|ui| {
             ui.add(egui::DragValue::new(&mut self.patch.1).range(1..=512).prefix("Anzahl "));
             ui.add(egui::DragValue::new(&mut self.patch.2).range(1..=32768).prefix("Uni "));
             ui.add(egui::DragValue::new(&mut self.patch.3).range(1..=512).prefix("Adr "));
             if ui.button("Patchen").clicked() {
-                let (ty, count, universe, address) = self.patch;
-                acts.push(Action::AddFixtures { ty, count, universe, address });
-                self.patch.3 = (address + count * TYPES[ty].channels.len() as u16).min(512);
+                let (lib, count, universe, address) = self.patch;
+                let ty = self.library[lib].clone();
+                let index = e.show.types.iter().position(|t| t.name == ty.name).unwrap_or(e.show.types.len());
+                let width = ty.channels.len() as u32;
+                acts.push(Action::AddTypes(vec![ty]));
+                acts.push(Action::AddFixtures { ty: index, count, universe, address });
+                self.patch.3 = (address as u32 + count as u32 * width).min(512) as u16;
             }
         });
         ui.separator();
+        caption(ui, "Gepatchte Fixtures");
         let conflicts = e.conflicts();
         egui::ScrollArea::vertical().show(ui, |ui| {
             for f in &e.show.fixtures {
                 ui.horizontal(|ui| {
                     let bad = conflicts.contains(&f.id);
+                    let span = format!("{}–{}", f.address, e.show.range(f).end.saturating_sub(1));
                     let text = format!(
-                        "{:>3}   {:<14} Uni {}   {:>3}–{}",
+                        "{:>3}   {:<28} Uni {:<3} {span:<9}",
                         f.id,
-                        TYPES[f.ty].name,
+                        short(&e.show.types[f.ty].name, 28),
                         f.universe,
-                        f.address,
-                        f.range().end - 1
                     );
                     let rt = RichText::new(text).monospace();
                     ui.label(if bad { rt.color(theme::DANGER) } else { rt });
@@ -335,6 +405,13 @@ impl eframe::App for App {
             let _ = std::fs::write(accent_path(), self.accent);
         }
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+        self.dev_screenshot(ui.ctx());
+
+        let dropped: Vec<_> = ui.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
+        if !dropped.is_empty() {
+            self.import(dropped);
+            self.view = View::Patch;
+        }
 
         let engine = self.engine.clone();
         let mut e = engine.lock().unwrap();

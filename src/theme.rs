@@ -29,9 +29,11 @@ pub fn apply(ctx: &egui::Context, accent: Color32) {
     v.selection.bg_fill = accent.gamma_multiply(0.45);
     v.selection.stroke = Stroke::new(1.0, accent);
     v.hyperlink_color = accent;
+    v.slider_trailing_fill = true;
+    v.handle_shape = egui::style::HandleShape::Rect { aspect_ratio: 0.5 };
     for (w, fill) in [
         (&mut v.widgets.noninteractive, PANEL),
-        (&mut v.widgets.inactive, RAISED),
+        (&mut v.widgets.inactive, Color32::from_rgb(30, 30, 35)),
         (&mut v.widgets.hovered, Color32::from_rgb(32, 32, 37)),
         (&mut v.widgets.active, accent.gamma_multiply(0.5)),
         (&mut v.widgets.open, RAISED),
@@ -47,7 +49,7 @@ pub fn apply(ctx: &egui::Context, accent: Color32) {
     ctx.global_style_mut(|s| {
         s.spacing.item_spacing = egui::vec2(8.0, 8.0);
         s.spacing.button_padding = egui::vec2(12.0, 6.0);
-        s.spacing.slider_width = 220.0;
+        s.spacing.slider_width = 320.0;
         s.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(14.0));
         s.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
         s.text_styles.insert(egui::TextStyle::Heading, egui::FontId::proportional(18.0));
@@ -58,7 +60,7 @@ pub fn apply(ctx: &egui::Context, accent: Color32) {
 pub fn tile(ui: &mut egui::Ui, text: impl Into<String>, on: bool, accent: Color32) -> egui::Response {
     let text: String = text.into();
     let mut b = egui::Button::new(egui::RichText::new(text).color(if on { accent } else { TEXT }))
-        .min_size(egui::vec2(72.0, 44.0));
+        .min_size(egui::vec2(104.0, 44.0));
     if on {
         b = b.fill(accent.gamma_multiply(0.18)).stroke(Stroke::new(1.5, accent));
     }

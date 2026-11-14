@@ -1,6 +1,6 @@
 //! Show-Daten (speicherbar) und Engine (Laufzeitzustand + Rendering).
 
-use crate::fixture::{Attr, Fixture, Kind, TYPES};
+use crate::fixture::{Attr, Fixture, FixtureType, Kind, builtin_types};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -29,19 +29,50 @@ pub struct Cue {
     pub values: Values,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Show {
     pub name: String,
+    #[serde(default = "builtin_types")]
+    pub types: Vec<FixtureType>,
     pub fixtures: Vec<Fixture>,
     pub groups: Vec<Group>,
     pub palettes: Vec<Palette>,
     pub cues: Vec<Cue>,
 }
 
+impl Default for Show {
+    fn default() -> Self {
+        Show {
+            name: String::new(),
+            types: builtin_types(),
+            fixtures: vec![],
+            groups: vec![],
+            palettes: vec![],
+            cues: vec![],
+        }
+    }
+}
+
+impl Show {
+    pub fn channels(&self, f: &Fixture) -> &[Option<Attr>] {
+        &self.types[f.ty].channels
+    }
+
+    pub fn has(&self, f: &Fixture, a: Attr) -> bool {
+        self.channels(f).contains(&Some(a))
+    }
+
+    /// Belegte DMX-Adressen (1-basiert, Ende exklusiv).
+    pub fn range(&self, f: &Fixture) -> std::ops::Range<u16> {
+        f.address..f.address + self.channels(f).len() as u16
+    }
+}
+
 /// Alles, was ein Bedienelement (UI, MIDI, Pult) tun kann.
 /// Hardware-Controller werden später auf diese Aktionen abgebildet.
 #[derive(Clone, Debug)]
 pub enum Action {
+    AddTypes(Vec<FixtureType>),
     Select(u32),
     Toggle(u32),
     SelectGroup(usize),
@@ -157,7 +188,7 @@ impl Engine {
             Action::ClearSelection => self.selection.clear(),
             Action::SetAttr(a, v) => {
                 for f in self.show.fixtures.iter().filter(|f| self.selection.contains(&f.id)) {
-                    if f.channels().contains(&a) {
+                    if self.show.has(f, a) {
                         self.programmer.entry(f.id).or_default().insert(a, v);
                     }
                 }
@@ -226,21 +257,29 @@ impl Engine {
             Action::Blackout(b) => self.blackout = b,
             Action::Master(m) => self.master = m,
             Action::AddFixtures { ty, count, universe, address } => {
-                let width = TYPES[ty].channels.len() as u16;
+                let Some(t) = self.show.types.get(ty) else { return };
+                let (width, name) = (t.channels.len() as u32, t.name.clone());
                 let mut next_id = self.show.fixtures.iter().map(|f| f.id).max().unwrap_or(0) + 1;
-                for n in 0..count {
-                    let address = address + n * width;
-                    if address + width - 1 > CHANNELS as u16 {
+                for n in 0..count as u32 {
+                    let address = address as u32 + n * width;
+                    if width == 0 || address + width - 1 > CHANNELS as u32 {
                         break;
                     }
                     self.show.fixtures.push(Fixture {
                         id: next_id,
-                        name: format!("{} {}", TYPES[ty].name, next_id),
+                        name: format!("{name} {next_id}"),
                         ty,
                         universe,
-                        address,
+                        address: address as u16,
                     });
                     next_id += 1;
+                }
+            }
+            Action::AddTypes(types) => {
+                for t in types {
+                    if !self.show.types.iter().any(|x| x.name == t.name) {
+                        self.show.types.push(t);
+                    }
                 }
             }
             Action::RemoveFixture(id) => {
@@ -260,7 +299,8 @@ impl Engine {
         let mut out = BTreeSet::new();
         for (i, a) in fx.iter().enumerate() {
             for b in &fx[i + 1..] {
-                if a.universe == b.universe && a.range().start < b.range().end && b.range().start < a.range().end {
+                let (ra, rb) = (self.show.range(a), self.show.range(b));
+                if a.universe == b.universe && ra.start < rb.end && rb.start < ra.end {
                     out.insert(a.id);
                     out.insert(b.id);
                 }
@@ -276,7 +316,8 @@ impl Engine {
         self.frames.clear();
         for f in &self.show.fixtures {
             let frame = self.frames.entry(f.universe).or_insert([0; CHANNELS]);
-            for (i, &a) in f.channels().iter().enumerate() {
+            for (i, slot) in self.show.channels(f).iter().enumerate() {
+                let Some(a) = *slot else { continue };
                 let v = self
                     .programmer
                     .get(&f.id)
@@ -290,8 +331,8 @@ impl Engine {
                 } else {
                     v
                 };
-                if let Some(slot) = frame.get_mut(f.address as usize - 1 + i) {
-                    *slot = v;
+                if let Some(out) = frame.get_mut(f.address as usize - 1 + i) {
+                    *out = v;
                 }
             }
         }
