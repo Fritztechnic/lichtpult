@@ -33,7 +33,11 @@ Mehrere Befehle mit `;`: `1 thru 8 @ 50` · `1 + 3 - 2 red 255` · `group 1 pal 
 ## Funktionen
 Mehrere Cuelisten mit Playback-Fadern, Follow/Loop, HTP/LTP-Mischung, Effekt-Engine (Intensität/Farbe/Position), 2D-Bühnenansicht, Undo/Redo, Farbrad/Gobo/Prisma/Iris/Fokus/Frost, 16-Bit-Pan/Tilt (Fine-Kanäle aus OFL), ESP32-Art-Net→DMX-Node (`firmware/esp32-dmx`).
 
+- **Patch:** Bibliothek mit Kanalvorschau, „Nächste freie“ Adresse, Belegungskarte (512 Kanäle je Universum, Konflikte rot, Klick wählt/setzt Adresse), lückenloses Neuadressieren, Import von OFL-`.json` und GDTF-`.gdtf` (Datei/Ordner/Drag & Drop).
+- **Output:** Art-Net, sACN (E1.31) oder beides, optional mit Ziel-IP (Unicast, z. B. ESP32); DMX-Monitor.
+- **MIDI:** Eingänge werden automatisch verbunden; Taste/Regler „lernen“ für GO, Back, Freigeben, Playback-Fader, Master, Blackout und Effekte. Zuordnungen in `~/.local/share/lichtpult/midi.json`.
+
 ## Roadmap
-GDTF-Import, sACN, MIDI/OSC-Controller, Trigger/Timecode, 3D-Visualizer
+Trigger/Timecode, 3D-Visualizer, herstellerspezifische Pult-Protokolle (z. B. NX-Touch)
 
 Lizenz: MIT

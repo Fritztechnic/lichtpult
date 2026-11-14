@@ -164,6 +164,19 @@ impl Show {
         f.address..f.address + self.channels(f).len() as u16
     }
 
+    /// Erste Adresse im Universum, ab der `width` Kanäle frei sind.
+    pub fn free_address(&self, universe: u16, width: u16) -> Option<u16> {
+        let mut used = [false; 513];
+        for f in self.fixtures.iter().filter(|f| f.universe == universe) {
+            for a in self.range(f) {
+                if let Some(u) = used.get_mut(a as usize) {
+                    *u = true;
+                }
+            }
+        }
+        (1..=(513 - width.min(512))).find(|&a| (a..a + width).all(|c| !used[c as usize]))
+    }
+
     /// Altes Format übernehmen und mindestens eine Cuelist sicherstellen.
     fn normalize(&mut self) {
         if self.lists.is_empty() {
@@ -239,6 +252,8 @@ pub enum Action {
     Master(u8),
     AddFixtures { ty: usize, count: u16, universe: u16, address: u16 },
     RemoveFixture(u32),
+    /// Fixtures eines Universums lückenlos ab Adresse 1 neu adressieren (ID-Reihenfolge).
+    AutoAddress(u16),
     Undo,
     Redo,
 }
@@ -276,6 +291,7 @@ impl Action {
                 | DeleteEffect(_)
                 | AddFixtures { .. }
                 | RemoveFixture(_)
+                | AutoAddress(_)
         )
     }
 }
@@ -798,6 +814,20 @@ impl Engine {
                     next_id += 1;
                 }
             }
+            Action::AutoAddress(u) => {
+                let mut next = 1u16;
+                for i in 0..self.show.fixtures.len() {
+                    if self.show.fixtures[i].universe != u {
+                        continue;
+                    }
+                    let w = self.show.channels(&self.show.fixtures[i]).len() as u16;
+                    if next + w > CHANNELS as u16 + 1 {
+                        break;
+                    }
+                    self.show.fixtures[i].address = next;
+                    next += w;
+                }
+            }
             Action::AddTypes(types) => {
                 for t in types {
                     if !self.show.types.iter().any(|x| x.name == t.name) {
@@ -1124,5 +1154,19 @@ mod tests {
         assert_eq!(e.selection.len(), 2);
         e.apply(Action::Deselect(1));
         assert_eq!(e.selection.len(), 1);
+    }
+
+    #[test]
+    fn auto_address_packs_and_finds_free_slot() {
+        let mut e = engine();
+        e.apply(Action::SetPatch { id: 2, universe: 1, address: 100 });
+        e.apply(Action::AutoAddress(1));
+        assert!(e.conflicts().is_empty());
+        let a = e.show.fixtures[0].address;
+        assert_eq!(a, 1);
+        let w = e.show.channels(&e.show.fixtures[0]).len() as u16;
+        assert_eq!(e.show.fixtures[1].address, 1 + w);
+        let n = e.show.fixtures.len() as u16;
+        assert_eq!(e.show.free_address(1, w), Some(1 + n * w));
     }
 }

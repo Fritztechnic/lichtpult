@@ -4,6 +4,9 @@
 pub mod cmd;
 pub mod engine;
 pub mod fixture;
+pub mod gdtf;
+pub mod midi;
+pub mod output;
 
 use engine::{Engine, Show};
 use std::sync::{Arc, Mutex};
@@ -13,22 +16,14 @@ pub type Shared = Arc<Mutex<Engine>>;
 
 const PERIOD: Duration = Duration::from_micros(22_700); // ~44 Hz
 
-/// Art-Net-DMX-Paket (OpDmx). `universe` ist 0-basiert.
-pub fn artnet_packet(seq: u8, universe: u16, data: &engine::Frame) -> Vec<u8> {
-    let mut p = Vec::with_capacity(18 + data.len());
-    p.extend_from_slice(b"Art-Net\0");
-    p.extend_from_slice(&[0x00, 0x50, 0, 14, seq, 0]);
-    p.extend_from_slice(&universe.to_le_bytes());
-    p.extend_from_slice(&(data.len() as u16).to_be_bytes());
-    p.extend_from_slice(data);
-    p
-}
+pub use output::{OutConfig, Protocol, artnet_packet};
 
-/// Engine-Takt und Art-Net-Ausgabe in einem Thread.
-pub fn spawn_engine(engine: Shared, target: &'static str) {
+/// Engine-Takt und Netzwerk-Ausgabe (Art-Net/sACN) in einem Thread.
+pub fn spawn_engine(engine: Shared, cfg: Arc<Mutex<OutConfig>>) {
     std::thread::spawn(move || {
         let sock = std::net::UdpSocket::bind("0.0.0.0:0").expect("UDP bind");
         sock.set_broadcast(true).ok();
+        let cid: [u8; 16] = std::array::from_fn(|i| (std::process::id() as u8).wrapping_add(i as u8 * 17));
         let (mut seq, mut last) = (1u8, Instant::now());
         loop {
             let frames = {
@@ -38,8 +33,19 @@ pub fn spawn_engine(engine: Shared, target: &'static str) {
                 last = now;
                 e.frames.clone()
             };
-            for (u, data) in &frames {
-                let _ = sock.send_to(&artnet_packet(seq, u.saturating_sub(1), data), target);
+            let c = cfg.lock().unwrap().clone();
+            if c.enabled {
+                let host = c.target.trim();
+                for (u, data) in &frames {
+                    if c.protocol != Protocol::Sacn {
+                        let to = if host.is_empty() { "255.255.255.255:6454".into() } else { format!("{host}:6454") };
+                        let _ = sock.send_to(&artnet_packet(seq, u.saturating_sub(1), data), to);
+                    }
+                    if c.protocol != Protocol::ArtNet {
+                        let to = if host.is_empty() { output::sacn_multicast(*u) } else { format!("{host}:5568") };
+                        let _ = sock.send_to(&output::sacn_packet(&cid, seq, *u, c.sacn_priority, data), to);
+                    }
+                }
             }
             seq = seq.wrapping_add(1).max(1);
             std::thread::sleep(PERIOD);
@@ -69,12 +75,12 @@ pub fn save_library(lib: &[fixture::FixtureType]) -> std::io::Result<()> {
     std::fs::write(data_dir().join("library.json"), serde_json::to_vec(lib)?)
 }
 
-/// Alle `.json`-Dateien unter `path` (Datei oder Ordner, rekursiv).
+/// Alle `.json`-/`.gdtf`-Dateien unter `path` (Datei oder Ordner, rekursiv).
 pub fn json_files(path: &std::path::Path) -> Vec<std::path::PathBuf> {
     if path.is_dir() {
         let Ok(rd) = std::fs::read_dir(path) else { return vec![] };
         rd.flatten().flat_map(|e| json_files(&e.path())).collect()
-    } else if path.extension().is_some_and(|e| e == "json") {
+    } else if path.extension().is_some_and(|e| e == "json" || e == "gdtf") {
         vec![path.to_path_buf()]
     } else {
         vec![]
