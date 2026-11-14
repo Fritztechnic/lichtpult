@@ -163,6 +163,7 @@ fn statement(stmt: &str, e: &Engine, out: &mut Vec<Action>) -> Result<(), String
             c.next();
             match c.next() {
                 Some("cue") => out.push(Action::RecordCue),
+                Some("scene" | "szene") => out.push(Action::StoreScene),
                 Some("group" | "gruppe") => out.push(Action::RecordGroup),
                 Some("palette" | "pal") => {
                     let k = c.next().and_then(kind_of).ok_or("record palette: intensity, color, position oder beam")?;

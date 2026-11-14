@@ -31,6 +31,9 @@ pub struct Cue {
     #[serde(default)]
     pub follow: Option<f32>,
     pub values: Values,
+    /// Szene: enthält den vollständigen Look und erbt nichts von vorherigen Cues.
+    #[serde(default)]
+    pub block: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -209,6 +212,8 @@ pub enum Action {
     RecordPalette(Kind),
     ApplyPalette(usize),
     RecordCue,
+    /// Aktuellen Look als eigenständige Szene speichern, Programmer leeren und abspielen.
+    StoreScene,
     /// Nächsten Cue der Cuelist starten.
     Go(usize),
     Back(usize),
@@ -268,6 +273,7 @@ impl Action {
                 | RecordGroup
                 | RecordPalette(_)
                 | RecordCue
+                | StoreScene
                 | SetCueFade(..)
                 | SetCueFollow(..)
                 | DeleteCue(_)
@@ -429,7 +435,8 @@ impl Engine {
     /// Tracking: Cue-Zustand = alle Änderungen bis einschließlich Cue `i`.
     fn state_at(&self, l: usize, i: usize) -> Values {
         let mut out = Values::new();
-        for cue in &self.show.lists[l].cues[..=i] {
+        let start = self.show.lists[l].cues[..=i].iter().rposition(|c| c.block).unwrap_or(0);
+        for cue in &self.show.lists[l].cues[start..=i] {
             for (&id, attrs) in &cue.values {
                 out.entry(id).or_default().extend(attrs);
             }
@@ -662,7 +669,23 @@ impl Engine {
                 if !self.programmer.is_empty() {
                     let name = format!("Cue {}", self.show.lists[l].cues.len() + 1);
                     let values = self.programmer.clone();
-                    self.show.lists[l].cues.push(Cue { name, fade: 2.0, follow: None, values });
+                    self.show.lists[l].cues.push(Cue { name, fade: 2.0, follow: None, values, block: false });
+                }
+            }
+            Action::StoreScene => {
+                let play = self.playback_values();
+                let mut values = Values::new();
+                for f in &self.show.fixtures {
+                    for a in self.show.channels(f).iter().flatten().filter(|a| Attr::ALL.contains(a)) {
+                        values.entry(f.id).or_default().insert(*a, self.value_of(&play, f.id, *a).0);
+                    }
+                }
+                if !values.is_empty() {
+                    let name = format!("Szene {}", self.show.lists[l].cues.len() + 1);
+                    self.show.lists[l].cues.push(Cue { name, fade: 1.0, follow: None, values, block: true });
+                    self.programmer.clear();
+                    let last = self.show.lists[l].cues.len() - 1;
+                    self.goto(l, Some(last));
                 }
             }
             Action::Go(i) => {
@@ -1168,5 +1191,27 @@ mod tests {
         assert_eq!(e.show.fixtures[1].address, 1 + w);
         let n = e.show.fixtures.len() as u16;
         assert_eq!(e.show.free_address(1, w), Some(1 + n * w));
+    }
+
+    #[test]
+    fn scenes_are_independent_and_clear_programmer() {
+        let mut e = engine();
+        e.apply(Action::Select(1));
+        e.apply(Action::SetAttr(Attr::Dimmer, 200));
+        e.apply(Action::StoreScene);
+        assert!(e.programmer.is_empty());
+        e.tick(5.0);
+        e.apply(Action::ClearSelection);
+        e.apply(Action::Select(2));
+        e.apply(Action::SetAttr(Attr::Dimmer, 100));
+        e.apply(Action::StoreScene);
+        e.tick(5.0);
+        assert_eq!(e.frames[&1][0], 200); // Szene 2 sieht Szene 1 (bisheriger Look)
+        e.apply(Action::GotoCue(0));
+        e.tick(5.0);
+        assert_eq!(e.frames[&1][4], 0); // Szene 1 kennt Fixture 2 nicht als an
+        e.apply(Action::GotoCue(1));
+        e.tick(5.0);
+        assert_eq!(e.frames[&1][4], 100);
     }
 }

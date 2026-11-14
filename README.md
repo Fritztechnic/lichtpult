@@ -28,11 +28,14 @@ belegen ihre DMX-Adresse, bleiben aber bei 0.
 `Leertaste` GO · `Backspace` Back · `Esc` Auswahl löschen · `Strg+A` alle · `Strg+Z` / `Strg+Shift+Z` Undo/Redo · `Strg+L` Befehlszeile
 
 ## Befehlszeile
-Mehrere Befehle mit `;`: `1 thru 8 @ 50` · `1 + 3 - 2 red 255` · `group 1 pal 2` · `go 2` · `back` · `release 1` · `goto 3` · `level 1 200` · `master 128` · `blackout on` · `fx 1` / `fx stop` · `record cue|group|palette color` · `undo` · `clear`
+Mehrere Befehle mit `;`: `1 thru 8 @ 50` · `1 + 3 - 2 red 255` · `group 1 pal 2` · `go 2` · `back` · `release 1` · `goto 3` · `level 1 200` · `master 128` · `blackout on` · `fx 1` / `fx stop` · `record scene|cue|group|palette color` · `undo` · `clear`
 
 ## Funktionen
 Mehrere Cuelisten mit Playback-Fadern, Follow/Loop, HTP/LTP-Mischung, Effekt-Engine (Intensität/Farbe/Position), 2D-Bühnenansicht, Undo/Redo, Farbrad/Gobo/Prisma/Iris/Fokus/Frost, 16-Bit-Pan/Tilt (Fine-Kanäle aus OFL), ESP32-Art-Net→DMX-Node (`firmware/esp32-dmx`).
 
+- **Tabs:** *Pult* (Fixtures wählen, Programmer, Paletten, Effekte), *Szenen* (Pads zum Abrufen, GO/Back, Überblendzeit, Auto-Follow), *Bühne*, *Patch*, *Ausgabe*.
+- **Szenen:** „Als Szene speichern“ sichert den vollständigen Look aller Fixtures als unabhängige Szene und leert den Programmer. GO/Szenen-Klick leeren den Programmer automatisch, damit manuelle Werte die Szene nicht überdecken.
+- **Autosave:** Die Show wird alle 3 s gespeichert, wenn sie sich geändert hat.
 - **Patch:** Bibliothek mit Kanalvorschau, „Nächste freie“ Adresse, Belegungskarte (512 Kanäle je Universum, Konflikte rot, Klick wählt/setzt Adresse), lückenloses Neuadressieren, Import von OFL-`.json` und GDTF-`.gdtf` (Datei/Ordner/Drag & Drop).
 - **Output:** Art-Net, sACN (E1.31) oder beides, optional mit Ziel-IP (Unicast, z. B. ESP32); DMX-Monitor.
 - **MIDI:** Eingänge werden automatisch verbunden; Taste/Regler „lernen“ für GO, Back, Freigeben, Playback-Fader, Master, Blackout und Effekte. Zuordnungen in `~/.local/share/lichtpult/midi.json`.

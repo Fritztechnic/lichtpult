@@ -1,12 +1,13 @@
 use eframe::egui::{self, Color32, CornerRadius, Stroke};
 
-pub const BG: Color32 = Color32::from_rgb(0, 0, 0);
-pub const PANEL: Color32 = Color32::from_rgb(10, 10, 12);
-pub const RAISED: Color32 = Color32::from_rgb(20, 20, 23);
-pub const LINE: Color32 = Color32::from_rgb(38, 38, 43);
-pub const TEXT: Color32 = Color32::from_rgb(228, 228, 232);
-pub const MUTED: Color32 = Color32::from_rgb(120, 120, 128);
-pub const DANGER: Color32 = Color32::from_rgb(230, 70, 70);
+pub const BG: Color32 = Color32::from_rgb(12, 14, 18);
+pub const PANEL: Color32 = Color32::from_rgb(19, 22, 29);
+pub const RAISED: Color32 = Color32::from_rgb(28, 32, 42);
+pub const LINE: Color32 = Color32::from_rgb(43, 49, 64);
+pub const TEXT: Color32 = Color32::from_rgb(230, 233, 240);
+pub const MUTED: Color32 = Color32::from_rgb(134, 142, 160);
+pub const DANGER: Color32 = Color32::from_rgb(240, 84, 84);
+pub const OK: Color32 = Color32::from_rgb(70, 200, 130);
 
 pub const PRESETS: [[u8; 3]; 6] = [
     [0, 170, 255],
@@ -19,10 +20,10 @@ pub const PRESETS: [[u8; 3]; 6] = [
 
 pub fn apply(ctx: &egui::Context, accent: Color32) {
     let mut v = egui::Visuals::dark();
-    let r = CornerRadius::same(5);
+    let r = CornerRadius::same(6);
     v.panel_fill = PANEL;
     v.window_fill = PANEL;
-    v.extreme_bg_color = BG;
+    v.extreme_bg_color = Color32::from_rgb(9, 11, 15);
     v.faint_bg_color = RAISED;
     v.window_stroke = Stroke::new(1.0, LINE);
     v.override_text_color = Some(TEXT);
@@ -33,8 +34,8 @@ pub fn apply(ctx: &egui::Context, accent: Color32) {
     v.handle_shape = egui::style::HandleShape::Rect { aspect_ratio: 0.5 };
     for (w, fill) in [
         (&mut v.widgets.noninteractive, PANEL),
-        (&mut v.widgets.inactive, Color32::from_rgb(30, 30, 35)),
-        (&mut v.widgets.hovered, Color32::from_rgb(32, 32, 37)),
+        (&mut v.widgets.inactive, RAISED),
+        (&mut v.widgets.hovered, Color32::from_rgb(38, 44, 58)),
         (&mut v.widgets.active, accent.gamma_multiply(0.5)),
         (&mut v.widgets.open, RAISED),
     ] {
@@ -47,29 +48,60 @@ pub fn apply(ctx: &egui::Context, accent: Color32) {
     ctx.set_visuals(v);
 
     ctx.global_style_mut(|s| {
-        s.spacing.item_spacing = egui::vec2(8.0, 8.0);
-        s.spacing.button_padding = egui::vec2(12.0, 6.0);
+        s.spacing.item_spacing = egui::vec2(8.0, 6.0);
+        s.spacing.button_padding = egui::vec2(10.0, 4.0);
+        s.spacing.interact_size.y = 26.0;
         s.spacing.slider_width = 320.0;
-        s.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(14.0));
-        s.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
+        s.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(13.5));
+        s.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(13.5));
         s.text_styles.insert(egui::TextStyle::Heading, egui::FontId::proportional(18.0));
     });
 }
 
-/// Auswahl-Kachel (Fixtures, Gruppen, Paletten, Cues).
+/// Auswahl-Chip (Gruppen, Paletten, Listen, Umschalter).
 pub fn tile(ui: &mut egui::Ui, text: impl Into<String>, on: bool, accent: Color32) -> egui::Response {
     let text: String = text.into();
-    let mut b = egui::Button::new(egui::RichText::new(text).color(if on { accent } else { TEXT }))
-        .min_size(egui::vec2(104.0, 44.0));
+    let mut b = egui::Button::new(egui::RichText::new(text).color(if on { accent } else { TEXT })).min_size(egui::vec2(0.0, 28.0));
     if on {
-        b = b.fill(accent.gamma_multiply(0.18)).stroke(Stroke::new(1.5, accent));
+        b = b.fill(accent.gamma_multiply(0.16)).stroke(Stroke::new(1.0, accent));
     }
     ui.add(b)
 }
 
+/// Segmentierte Navigation (aktiv = Akzent-Unterstrich).
+pub fn nav(ui: &mut egui::Ui, text: &str, on: bool, accent: Color32) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(text.to_string(), egui::FontId::proportional(14.5), if on { TEXT } else { MUTED });
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(galley.size().x + 28.0, 40.0), egui::Sense::click());
+    let col = if on { TEXT } else if r.hovered() { TEXT.gamma_multiply(0.85) } else { MUTED };
+    ui.painter().galley(rect.center() - galley.size() / 2.0, galley, col);
+    if on {
+        let y = rect.bottom() - 2.0;
+        ui.painter().line_segment([egui::pos2(rect.left() + 8.0, y), egui::pos2(rect.right() - 8.0, y)], Stroke::new(2.0, accent));
+    }
+    r
+}
+
+/// Kleine Statusanzeige mit Punkt.
+pub fn pill(ui: &mut egui::Ui, text: &str, color: Color32) {
+    ui.label(egui::RichText::new(format!("● {text}")).small().color(color));
+}
+
 /// Dezente Abschnittsüberschrift.
 pub fn caption(ui: &mut egui::Ui, text: &str) {
-    ui.label(egui::RichText::new(text.to_uppercase()).small().color(MUTED).strong());
+    ui.label(egui::RichText::new(text.to_uppercase()).size(11.0).color(MUTED).strong());
+}
+
+/// Abschnittsüberschrift mit Erklärung im Tooltip (ⓘ).
+pub fn section(ui: &mut egui::Ui, text: &str, help: &str) {
+    ui.horizontal(|ui| {
+        caption(ui, text);
+        ui.label(egui::RichText::new("ⓘ").small().color(MUTED)).on_hover_text(help);
+    });
+}
+
+/// Erklärtext in Grau.
+pub fn hint(ui: &mut egui::Ui, text: &str) {
+    ui.label(egui::RichText::new(text).size(12.0).color(MUTED));
 }
 
 pub fn attr_tint(a: lichtpult::fixture::Attr, accent: Color32) -> Color32 {
@@ -92,45 +124,51 @@ pub enum Fader {
     Reset,
 }
 
-/// Vertikaler Fader. `set` = Wert kommt aus dem Programmer (hell), sonst aus dem Cue (gedimmt).
+/// Horizontaler Regler mit Beschriftung und Prozentwert.
+/// `set` = Wert kommt aus dem Programmer (hell), sonst aus der Wiedergabe (gedimmt).
 /// Doppelklick gibt den Programmer-Wert frei.
 pub fn fader(ui: &mut egui::Ui, label: &str, value: u8, tint: Color32, set: bool) -> Fader {
     let mut out = Fader::None;
-    ui.vertical(|ui| {
-        ui.set_width(58.0);
-        ui.vertical_centered(|ui| {
-            ui.label(egui::RichText::new(format!("{}%", (value as u32 * 100 + 127) / 255)).monospace().color(if set { TEXT } else { MUTED }));
-        });
-        let (rect, r) = ui.allocate_exact_size(egui::vec2(58.0, 180.0), egui::Sense::click_and_drag());
-        let p = ui.painter();
-        p.rect_filled(rect, 6.0, Color32::from_rgb(22, 22, 26));
-        let h = rect.height() * value as f32 / 255.0;
-        let fill = egui::Rect::from_min_max(egui::pos2(rect.left(), rect.bottom() - h), rect.right_bottom());
-        p.rect_filled(fill, 6.0, if set { tint } else { tint.gamma_multiply(0.3) });
-        let border = if r.hovered() || r.dragged() { tint } else { LINE };
-        p.rect_stroke(rect, 6.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
-        if r.double_clicked() {
-            out = Fader::Reset;
-        } else if r.is_pointer_button_down_on() {
-            if let Some(pos) = r.interact_pointer_pos() {
-                let k = ((rect.bottom() - pos.y) / rect.height()).clamp(0.0, 1.0);
-                out = Fader::Set((k * 255.0).round() as u8);
-            }
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(ui.available_width().max(220.0), 26.0), egui::Sense::click_and_drag());
+    let p = ui.painter();
+    let track = egui::Rect::from_min_max(egui::pos2(rect.left() + 72.0, rect.center().y - 4.0), egui::pos2(rect.right() - 46.0, rect.center().y + 4.0));
+    p.text(egui::pos2(rect.left(), rect.center().y), egui::Align2::LEFT_CENTER, label, egui::FontId::proportional(13.0), if set { TEXT } else { MUTED });
+    p.rect_filled(track, 4.0, Color32::from_rgb(10, 12, 16));
+    let k = value as f32 / 255.0;
+    let mut fill = track;
+    fill.set_right(track.left() + track.width() * k);
+    p.rect_filled(fill, 4.0, if set { tint } else { tint.gamma_multiply(0.35) });
+    let x = track.left() + track.width() * k;
+    p.circle(egui::pos2(x, rect.center().y), 7.0, if set { Color32::WHITE } else { Color32::from_rgb(150, 156, 170) }, egui::Stroke::NONE);
+    p.text(
+        egui::pos2(rect.right(), rect.center().y),
+        egui::Align2::RIGHT_CENTER,
+        format!("{}%", (value as u32 * 100 + 127) / 255),
+        egui::FontId::monospace(12.0),
+        if set { TEXT } else { MUTED },
+    );
+    if r.double_clicked() {
+        out = Fader::Reset;
+    } else if r.is_pointer_button_down_on() {
+        if let Some(pos) = r.interact_pointer_pos() {
+            out = Fader::Set((((pos.x - track.left()) / track.width()).clamp(0.0, 1.0) * 255.0).round() as u8);
         }
-        ui.vertical_centered(|ui| ui.label(egui::RichText::new(label).small().color(MUTED)));
-    });
+    }
     out
 }
 
 /// Karte mit Titel für zusammengehörige Bedienelemente.
 pub fn card<R>(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     egui::Frame::new()
-        .fill(Color32::from_rgb(14, 14, 17))
+        .fill(PANEL)
         .stroke(Stroke::new(1.0, LINE))
-        .corner_radius(8)
-        .inner_margin(10)
+        .corner_radius(10)
+        .inner_margin(12)
         .show(ui, |ui| {
-            caption(ui, title);
+            ui.set_width(ui.available_width());
+            if !title.is_empty() {
+                caption(ui, title);
+            }
             add(ui)
         })
         .inner
