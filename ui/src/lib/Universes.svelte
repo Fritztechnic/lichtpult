@@ -7,6 +7,7 @@
   import Tool from './Tool.svelte'
   import Info from './Info.svelte'
   import Wand from '@lucide/svelte/icons/wand-sparkles'
+  import Pointer from '@lucide/svelte/icons/mouse-pointer-2'
   import MoveRight from '@lucide/svelte/icons/move-right'
 
   const live = $derived(S.live!)
@@ -65,6 +66,8 @@
     }
     if (acts.length) { S.act(acts); S.say(`Moved ${acts.length} fixture(s) to universe ${uni}`) }
   }
+  const selectUni = () => fixtures.length && S.act([{ Select: fixtures[0].id }, ...fixtures.slice(1).map((f) => ({ Toggle: f.id }))])
+  let hov = $state(-1)
   const pick = (o: Own) => { if (o && o !== 'clash') S.act({ Select: o.id }) }
   const hue = (id: number) => (id * 47) % 360
 </script>
@@ -88,11 +91,12 @@
     <header>
       <div class="title">Universe {uni} <Info text="Live DMX values of this universe. Each patched fixture has its own colour, brighter means a higher value. Click a channel to select its fixture. Red outlines are overlapping addresses." /></div>
     </header>
+    <div class="hint mono">{hov >= 0 ? tip(own[hov], hov) : 'Hover a channel for details'}</div>
     <div class="body">
       <div class="dmx">
         {#each own as o, i}
           {@const v = frame[i] ?? 0}
-          <button class="c" class:clash={o === 'clash'} class:free={!o} title={tip(o, i)} onclick={() => pick(o)}
+          <button class="c" class:clash={o === 'clash'} class:free={!o} onmouseenter={() => (hov = i)} onmouseleave={() => (hov = -1)} onclick={() => pick(o)}
             style={o && o !== 'clash' ? `background:hsl(${hue(o.id)} 55% ${14 + (v / 255) * 38}%)` : ''}>
             <span class="a">{i + 1}</span><span class="v mono">{o ? v : ''}</span>
           </button>
@@ -103,6 +107,7 @@
 
   <section class="win side">
     <header>
+      <Tool icon={Pointer} label="Select universe" disabled={!fixtures.length} onclick={selectUni} title="Select all fixtures of universe {uni}" />
       <Tool icon={Wand} label="Auto Address" onclick={() => S.act({ AutoAddress: uni })} title="Re-address universe {uni} without gaps" />
       <Tool icon={MoveRight} label="Move selection here" disabled={!live.selection.length} onclick={moveHere} title="Append the selected fixtures to the end of universe {uni}" />
     </header>
@@ -138,6 +143,7 @@
   .c.clash { border-color: var(--red-hi); background: #4a1a1a; }
   .a { position: absolute; left: 3px; top: 1px; font-size: 9px; color: #bbb; }
   .v { position: absolute; right: 3px; bottom: 2px; font-size: 12px; font-weight: 700; }
+  .hint { padding: 4px 10px; font-size: 12px; color: var(--yellow); border-bottom: 1px solid #222; height: 24px; flex: none; }
   .col { display: flex; flex-direction: column; gap: 6px; padding: 10px; }
   .stat { display: flex; justify-content: space-between; }
   .stat.bad b { color: var(--red-hi); }
