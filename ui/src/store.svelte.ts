@@ -11,6 +11,8 @@ class Store {
   error = $state(false)
   history = $state<string[]>([])
   settings = $state(false)
+  keypad = $state(false)
+  cmdText = $state('')
   quick = $state(false)
   dialog = $state<{ title: string; value: string; resolve: (v: string | null) => void } | null>(null)
   private busy = false

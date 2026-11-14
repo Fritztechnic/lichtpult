@@ -151,6 +151,10 @@ fn statement(stmt: &str, e: &Engine, out: &mut Vec<Action>) -> Result<(), String
             c.next();
             out.push(Action::SetBlind(!matches!(c.next(), Some("off" | "aus"))));
         }
+        "highlight" | "hl" => {
+            c.next();
+            out.push(Action::Highlight(!matches!(c.next(), Some("off" | "aus"))));
+        }
         "park" => {
             c.next();
             let a = c.next().map_or(Some(Attr::Dimmer), attr_of).ok_or("park: Attribut erwartet")?;

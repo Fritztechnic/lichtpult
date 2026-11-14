@@ -15,7 +15,7 @@ export interface Show {
 }
 export interface Live {
   rev: number; selection: number[]; last_selected: number | null; programmer: Values; parked: Values
-  master: number; blackout: boolean; blind: boolean; fade_speed: number; active: number
+  master: number; blackout: boolean; blind: boolean; highlight: boolean; fade_speed: number; active: number
   can_undo: boolean; can_redo: boolean
   players: { cue: number | null; level: number; progress: number }[]
   fx_running: boolean[]; conflicts: number[]

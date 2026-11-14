@@ -7,6 +7,8 @@
   import Plan from './lib/Plan.svelte'
   import Patch from './lib/Patch.svelte'
   import Output from './lib/Output.svelte'
+  import Keypad from './lib/Keypad.svelte'
+  import KeyboardIcon from '@lucide/svelte/icons/calculator'
   import Fader from './lib/Fader.svelte'
   import Sliders from '@lucide/svelte/icons/sliders-vertical'
   import ListVideo from '@lucide/svelte/icons/list-video'
@@ -27,7 +29,6 @@
 
   onMount(() => S.start())
 
-  let cmd = $state('')
   let cmdEl = $state<HTMLInputElement>()!
   let hi = $state(-1)
   let shows = $state<string[]>([])
@@ -46,14 +47,14 @@
   const act = $derived(live?.active ?? 0)
 
   async function runCmd() {
-    if (!cmd.trim()) return
-    await S.cmd(cmd.trim())
-    cmd = ''
+    if (!S.cmdText.trim()) return
+    await S.cmd(S.cmdText.trim())
+    S.cmdText = ''
     hi = -1
   }
   function hist(e: KeyboardEvent) {
-    if (e.key === 'ArrowUp') { hi = Math.min(S.history.length - 1, hi + 1); cmd = S.history[hi] ?? cmd; e.preventDefault() }
-    if (e.key === 'ArrowDown') { hi = Math.max(-1, hi - 1); cmd = hi < 0 ? '' : S.history[hi]; e.preventDefault() }
+    if (e.key === 'ArrowUp') { hi = Math.min(S.history.length - 1, hi + 1); S.cmdText = S.history[hi] ?? S.cmdText; e.preventDefault() }
+    if (e.key === 'ArrowDown') { hi = Math.max(-1, hi - 1); S.cmdText = hi < 0 ? '' : S.history[hi]; e.preventDefault() }
   }
   function keys(e: KeyboardEvent) {
     if (S.dialog) return
@@ -94,8 +95,11 @@
       <button class="logo" onclick={openSettings}>LICHTPULT</button>
       <span class="dim show">{show.name}</span>
       <span class="spacer"></span>
+      <span class="stat">{live.players[act] && show.lists[act] ? `Cuelist ${act + 1}: ${show.lists[act].name}` : 'No cuelist selected'}</span>
       <div class="msg" class:err={S.error}>{S.msg}</div>
+      <span class="stat">{live.selection.length ? `${live.selection.length} fixture${live.selection.length > 1 ? 's' : ''} selected` : 'No fixture or zone selected'}</span>
       <span class="spacer"></span>
+      <button class="btn sm" class:on={S.keypad} onclick={() => (S.keypad = !S.keypad)} aria-label="Keypad"><KeyboardIcon size={14} /> Keypad</button>
       <button class="btn sm" disabled={!live.can_undo} onclick={() => S.act('Undo')} aria-label="Undo"><Undo size={14} /></button>
       <button class="btn sm" disabled={!live.can_redo} onclick={() => S.act('Redo')} aria-label="Redo"><Redo size={14} /></button>
       <span class="gm">
@@ -168,10 +172,12 @@
     <div class="cmdl">
       <Terminal size={16} />
       <span class="mode" class:blind={live.blind}>{live.blind ? 'BLIND' : 'LIVE'}</span>
-      <input bind:this={cmdEl} bind:value={cmd} placeholder="Command line, e.g. 1 thru 8 at 50  ·  Ctrl+L" onkeydown={(e) => (e.key === 'Enter' ? runCmd() : hist(e))} />
+      <input bind:this={cmdEl} bind:value={S.cmdText} placeholder="Command line, e.g. 1 thru 8 at 50  ·  Ctrl+L" onkeydown={(e) => (e.key === 'Enter' ? runCmd() : hist(e))} />
       <span class="dim sel">{live.selection.length} sel · cue {live.players[act]?.cue != null ? live.players[act].cue! + 1 : '–'}</span>
     </div>
   </div>
+
+  {#if S.keypad}<Keypad />{/if}
 
   {#if S.dialog}
     {@const d = S.dialog}
@@ -216,6 +222,7 @@
   .top { display: flex; align-items: center; gap: 10px; padding: 0 8px; background: #050505; border-bottom: 1px solid var(--line); }
   .logo { display: inline-flex; align-items: center; gap: 6px; font-weight: 900; letter-spacing: .2em; font-size: 12px; color: #fff; }
   .show { font-size: 11px; }
+  .stat { font-size: 12px; color: #cfcfcf; font-style: italic; }
   .msg { font-size: 11px; color: var(--orange); min-width: 200px; text-align: center; } .msg.err { color: #ff6060; }
   .gm { display: inline-flex; align-items: center; gap: 6px; margin: 0 8px; font-size: 11px; }
   .gm input[type='range'] { width: 110px; accent-color: var(--red-hi); padding: 0; }

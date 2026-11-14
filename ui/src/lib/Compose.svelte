@@ -4,6 +4,7 @@
   import Tool from './Tool.svelte'
   import Info from './Info.svelte'
   import { ATTR_COLOR, ATTR_LABEL, KIND_OF, SHAPES, TARGETS, type Kind } from './types'
+  import Lightbulb from '@lucide/svelte/icons/lightbulb'
   import Save from '@lucide/svelte/icons/save'
   import RefreshCw from '@lucide/svelte/icons/refresh-cw'
   import Pencil from '@lucide/svelte/icons/pencil'
@@ -37,6 +38,7 @@
   let fxSel = $state(0)
 
   const TC: Record<string, string> = { Intensity: '#e03a38', Position: '#b060e0', Color: '#3fbf55', Beam: '#3a8ee0', FX: '#e0a030' }
+  const GC = ['#3a8ee0', '#3fbf55', '#e0a030', '#b060e0', '#e03a38', '#40c8c8']
   const fill = (n: number, c: number) => Math.max(c * 6, Math.ceil(n / c) * c) - n
   const pct = (v: number) => Math.round((v / 255) * 100) + '%'
 
@@ -89,7 +91,12 @@
     }
     return [...out]
   })
-  const tabAttrs = $derived(attrs.filter((a) => KIND_OF[a] === parTab))
+  const attrs2 = $derived.by(() => {
+    const o = [...attrs]
+    if (!o.includes('Dimmer') && show.fixtures.some((f) => sel.has(f.id) && ['Red', 'Green', 'Blue', 'White'].some((c) => show.types[f.ty]?.channels.includes(c)))) o.unshift('Dimmer')
+    return o
+  })
+  const tabAttrs = $derived(attrs2.filter((a) => KIND_OF[a] === parTab))
   const refId = $derived(live.last_selected ?? live.selection[0] ?? null)
   const progVal = (a: string) => (refId != null ? live.programmer[refId]?.[a] : undefined)
   const outVal = (a: string) => progVal(a) ?? 0
@@ -100,7 +107,7 @@
 
   const fxCount = $derived(show.effects.length)
   const eff = $derived(show.effects[fxSel] ?? null)
-  const tabCount = (k: string) => attrs.filter((a) => KIND_OF[a] === k).length
+  const tabCount = (k: string) => attrs2.filter((a) => KIND_OF[a] === k).length
 
   function hex(a: string) {
     const to = (x: number) => Math.round(x).toString(16).padStart(2, '0')
@@ -132,6 +139,24 @@
     S.act({ SetEffect: [fxSel, { ...eff, ...p }] })
   }
 
+  const fkeys: [string, string, () => unknown][] = [
+    ['F1', 'Clear', () => S.act('ClearProgrammer')],
+    ['F2', 'Blind', () => S.act({ SetBlind: !live.blind })],
+    ['F3', 'Highlight', () => S.act({ Highlight: !live.highlight })],
+    ['F4', 'Park', () => S.act({ Park: focusAttr })],
+    ['F5', 'Unpark', () => S.act('Unpark')],
+    ['F6', 'Fan', () => fan()],
+    ['F7', 'Record Cue', () => S.act('RecordCue')],
+    ['F8', 'Store Scene', () => S.act('StoreScene')],
+    ['F9', 'Undo', () => S.act('Undo')],
+    ['F10', 'Redo', () => S.act('Redo')],
+    ['F11', 'Blackout', () => S.act({ Blackout: !live.blackout })],
+    ['F12', 'Stop FX', () => S.act('StopEffects')],
+  ]
+  function fkey(e: KeyboardEvent) {
+    const i = /^F(\d+)$/.exec(e.key)
+    if (i && +i[1] >= 1 && +i[1] <= 12 && !e.ctrlKey && !e.altKey) { fkeys[+i[1] - 1][2](); e.preventDefault() }
+  }
   const progRows = $derived(Object.keys(live.programmer).map(Number))
   const progCols = $derived.by(() => {
     const s = new Set<string>()
@@ -141,12 +166,14 @@
   const fxName = (id: number) => show.fixtures.find((f) => f.id === id)?.name ?? '#' + id
 </script>
 
+<svelte:window onkeydown={fkey} />
 <div class="compose">
   <section class="win fc">
     <header>
       <Tool icon={MousePointer2} label="All" acc="var(--green)" onclick={() => S.act('SelectAll')} />
       <Tool icon={Eraser} label="None" acc="var(--red-hi)" onclick={() => S.act('ClearSelection')} />
       <Tool icon={ArrowLeftRight} label="Invert" acc="var(--blue)" onclick={() => S.act('InvertSelection')} />
+      <Tool icon={Lightbulb} label="Highlight" acc="var(--yellow)" on={live.highlight} onclick={() => S.act({ Highlight: !live.highlight })} />
       <Tool icon={ListFilter} label="Every" acc="var(--yellow)" onclick={every} />
       <Tool icon={ChevronLeft} label="Last" acc="var(--blue)" onclick={() => S.act({ SelectStep: -1 })} />
       <Tool icon={ChevronRight} label="Next" acc="var(--green)" onclick={() => S.act({ SelectStep: 1 })} />
@@ -162,7 +189,7 @@
       {#if fcTab === 'groups'}
         <div class="padgrid" style="--cols:6">
           {#each show.groups as g, i}
-            <button class="pad" onclick={() => groupClick(i)}><span class="n">{i + 1}</span><span class="nm">{g.name}</span><span class="v">{g.ids.length}</span></button>
+            <button class="pad" onclick={() => groupClick(i)}><span class="sw" style="background:{GC[i % GC.length]}"></span><span class="n">{i + 1}</span><span class="nm">{g.name}</span><span class="v">{g.ids.length}</span></button>
           {/each}
           {#each Array(fill(show.groups.length, 6)) as _, k}<div class="cellx"><i>{show.groups.length + k + 1}</i></div>{/each}
         </div>
@@ -199,7 +226,7 @@
       <div class="padgrid" style="--cols:5">
         {#each presets as { p, i }}
           <button class="pad" onclick={() => presetClick(i)}>
-            {#if p.kind === 'Color'}<span class="sw" style="background:rgb({p.values.Red ?? 0},{p.values.Green ?? 0},{p.values.Blue ?? 0})"></span>{/if}
+            <span class="sw" style="background:{p.kind === 'Color' ? `rgb(${p.values.Red ?? 0},${p.values.Green ?? 0},${p.values.Blue ?? 0})` : TC[p.kind]}"></span>
             <span class="n">{i + 1}</span><span class="nm">{p.name}</span>
           </button>
         {/each}
@@ -237,6 +264,11 @@
         </tbody>
       </table>
     </div>
+    <footer class="fkeys">
+      {#each fkeys as [k, l, run]}
+        <button class="fk" onclick={run}><b>{k}</b><span>{l}</span></button>
+      {/each}
+    </footer>
   </section>
 
   <section class="win par">
@@ -311,6 +343,9 @@
 <style>
   .compose { display: grid; height: 100%; gap: 2px; grid-template-columns: minmax(320px, 1fr) minmax(300px, 1fr) minmax(420px, 1.25fr); grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-areas: 'fc pr par' 'prog prog par'; padding: 2px; }
   .fc { grid-area: fc; } .pr { grid-area: pr; } .prog { grid-area: prog; } .par { grid-area: par; }
+  .fkeys { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; padding: 3px; }
+  .fk { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 2px; background: var(--btn); border: 1px solid var(--line-hi); font-size: 10px; color: #bbb; }
+  .fk b { color: var(--orange); font-size: 10px; } .fk:hover { background: var(--btn-hi); border-color: #888; }
   .pbody { display: flex; gap: 6px; padding: 6px; }
   .faders { display: flex; gap: 6px; width: 100%; align-items: stretch; }
   .fcol { flex: 1; max-width: 120px; min-width: 56px; display: flex; flex-direction: column; }

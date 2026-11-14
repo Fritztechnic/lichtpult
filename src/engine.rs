@@ -269,6 +269,11 @@ impl Show {
         self.channels(f).contains(&Some(a))
     }
 
+    /// Farb-Fixtures ohne eigenen Dimmer bekommen einen virtuellen Dimmer, der die Farbkanäle skaliert.
+    pub fn virtual_dim(&self, f: &Fixture) -> bool {
+        !self.has(f, Attr::Dimmer) && [Attr::Red, Attr::Green, Attr::Blue, Attr::White].iter().any(|&c| self.has(f, c))
+    }
+
     /// Belegte DMX-Adressen (1-basiert, Ende exklusiv).
     pub fn range(&self, f: &Fixture) -> std::ops::Range<u16> {
         f.address..f.address + self.channels(f).len() as u16
@@ -321,6 +326,7 @@ pub enum Action {
     /// Werte der Auswahl linear von `from` nach `to` auffächern.
     Fan(Attr, u8, u8, bool),
     SetBlind(bool),
+    Highlight(bool),
     Park(Attr),
     Unpark,
     /// Nächsten Cue sofort ohne Überblendung.
@@ -489,6 +495,7 @@ pub struct Engine {
     pub blackout: bool,
     /// Blind: Programmer wird nicht ausgegeben.
     pub blind: bool,
+    pub highlight: bool,
     /// Zähler, der bei jeder Änderung der gespeicherten Show wächst.
     pub rev: u64,
     /// Geparkte Werte überschreiben alles andere.
@@ -536,6 +543,7 @@ impl Engine {
             master: 255,
             blackout: false,
             blind: false,
+            highlight: false,
             rev: 1,
             parked: Values::new(),
             fade_speed: 1.0,
@@ -783,6 +791,7 @@ impl Engine {
                 }
             }
             Action::SetBlind(b) => self.blind = b,
+            Action::Highlight(b) => self.highlight = b,
             Action::Park(attr) => {
                 for f in self.show.fixtures.iter().filter(|f| self.selection.contains(&f.id)) {
                     if self.show.has(f, attr) {
@@ -822,7 +831,7 @@ impl Engine {
             Action::FadeSpeed(v) => self.fade_speed = v.clamp(0.1, 10.0),
             Action::SetAttr(a, v) => {
                 for f in self.show.fixtures.iter().filter(|f| self.selection.contains(&f.id)) {
-                    if self.show.has(f, a) {
+                    if self.show.has(f, a) || (a == Attr::Dimmer && self.show.virtual_dim(f)) {
                         self.programmer.entry(f.id).or_default().insert(a, v);
                     }
                 }
@@ -949,6 +958,10 @@ impl Engine {
                 for f in &self.show.fixtures {
                     for a in self.show.channels(f).iter().flatten().filter(|a| Attr::ALL.contains(a)) {
                         values.entry(f.id).or_default().insert(*a, self.value_of(&play, f.id, *a).0);
+                    }
+                    if self.show.virtual_dim(f) {
+                        let d = self.programmer.get(&f.id).and_then(|m| m.get(&Attr::Dimmer)).or_else(|| play.get(&f.id).and_then(|m| m.get(&Attr::Dimmer))).copied().unwrap_or(255);
+                        values.entry(f.id).or_default().insert(Attr::Dimmer, d);
                     }
                 }
                 if !values.is_empty() {
@@ -1226,6 +1239,10 @@ impl Engine {
         let prog = if self.blind { None } else { self.programmer.get(&f.id).and_then(|m| m.get(&a)).copied() };
         let parked = self.parked.get(&f.id).and_then(|m| m.get(&a)).copied();
         let mut v = parked.or(prog).unwrap_or_else(|| get(play, f.id, a)) as f32;
+        if a != Attr::Dimmer && a.kind() == Kind::Color && a.is_intensity_like() && self.show.virtual_dim(f) {
+            let d = self.parked.get(&f.id).and_then(|m| m.get(&Attr::Dimmer)).copied().or(if self.blind { None } else { self.programmer.get(&f.id).and_then(|m| m.get(&Attr::Dimmer)).copied() }).or_else(|| play.get(&f.id).and_then(|m| m.get(&Attr::Dimmer)).copied()).unwrap_or(255);
+            v *= d as f32 / 255.0;
+        }
         for &(e, phase) in fx {
             let depth = e.size as f32 / 255.0;
             match e.target {
@@ -1258,6 +1275,9 @@ impl Engine {
                     }
                 }
             }
+        }
+        if self.highlight && a.is_intensity_like() && self.selection.contains(&f.id) {
+            return 255.0;
         }
         v.clamp(0.0, 255.0)
     }
@@ -1538,6 +1558,20 @@ mod tests {
         e.apply(Action::GotoCue(1));
         e.tick(5.0);
         assert_eq!(e.frames[&1][4], 100);
+    }
+
+    #[test]
+    fn virtual_dimmer_scales_rgb_and_highlight_forces_full() {
+        let mut e = Engine::new(Show { types: builtin_types(), ..Show::default() });
+        e.apply(Action::AddFixtures { ty: 1, count: 1, universe: 0, address: 1 });
+        e.apply(Action::SelectAll);
+        e.apply(Action::SetAttr(Attr::Red, 200));
+        e.apply(Action::SetAttr(Attr::Dimmer, 128));
+        e.tick(0.0);
+        assert_eq!(e.frames[&0][0], 100);
+        e.apply(Action::Highlight(true));
+        e.tick(0.0);
+        assert_eq!(e.frames[&0][0], 255);
     }
 
     #[test]

@@ -63,6 +63,7 @@ pub fn live_json(e: &Engine) -> Value {
         "master": e.master,
         "blackout": e.blackout,
         "blind": e.blind,
+        "highlight": e.highlight,
         "fade_speed": e.fade_speed,
         "active": e.active,
         "can_undo": e.can_undo(),
