@@ -322,3 +322,30 @@ pub fn rail_btn(ui: &mut egui::Ui, icon_name: &str, text: &str, on: bool, accent
     ui.painter().text(rect.center() + egui::vec2(0.0, 16.0), egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(11.5), col);
     r
 }
+
+/// Leeres „+“-Pad zum Anlegen (Gruppe, Palette).
+pub fn pad_add(ui: &mut egui::Ui, size: egui::Vec2, label: &str, enabled: bool) -> egui::Response {
+    let (rect, r) = ui.allocate_exact_size(size, if enabled { egui::Sense::click() } else { egui::Sense::hover() });
+    let p = ui.painter();
+    let col = if enabled { MUTED } else { LINE };
+    p.rect_stroke(rect, 1.0, Stroke::new(1.0, LINE), egui::StrokeKind::Inside);
+    if enabled && r.hovered() {
+        p.rect_filled(rect, 1.0, Color32::from_rgb(30, 30, 32));
+    }
+    p.text(rect.center() - egui::vec2(0.0, 8.0), egui::Align2::CENTER_CENTER, "+", egui::FontId::proportional(22.0), col);
+    p.text(rect.center() + egui::vec2(0.0, 14.0), egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(11.5), col);
+    r
+}
+
+/// Attribut-Reiter: farbiger Buchstabe, aktiv = farbige Oberkante.
+pub fn attr_tab(ui: &mut egui::Ui, letter: &str, text: &str, color: Color32, on: bool) -> egui::Response {
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(128.0, 34.0), egui::Sense::click());
+    let p = ui.painter();
+    p.rect_filled(rect, 0.0, if on { RAISED } else if r.hovered() { Color32::from_rgb(34, 34, 36) } else { Color32::from_rgb(18, 18, 19) });
+    if on {
+        p.rect_filled(Rect::from_min_size(rect.min, egui::vec2(rect.width(), 3.0)), 0.0, color);
+    }
+    p.text(rect.left_center() + egui::vec2(12.0, 1.0), egui::Align2::LEFT_CENTER, letter, egui::FontId::proportional(15.0), color);
+    p.text(rect.left_center() + egui::vec2(32.0, 1.0), egui::Align2::LEFT_CENTER, text, egui::FontId::proportional(13.5), if on { TEXT } else { MUTED });
+    r
+}

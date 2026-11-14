@@ -11,7 +11,7 @@ use lichtpult::fixture::{Attr, FixtureType, Kind, builtin_types, import_ofl};
 use lichtpult::{Shared, json_files, load_library, load_show, save_library, save_show, spawn_engine};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use theme::{caption, nav, pill};
+use theme::{caption, pill};
 
 #[derive(PartialEq, Clone, Copy)]
 enum View {
@@ -39,6 +39,7 @@ pub struct App {
     out: Arc<Mutex<lichtpult::OutConfig>>,
     midi: Arc<Mutex<lichtpult::midi::Midi>>,
     pal_kind: Kind,
+    fx_tab: bool,
     cmd_open: bool,
     scene_sel: usize,
     scene_grid: bool,
@@ -102,7 +103,8 @@ impl App {
             out_universe: 1,
             out,
             midi,
-            pal_kind: Kind::Color,
+            pal_kind: Kind::Intensity,
+            fx_tab: false,
             cmd_open: false,
             scene_sel: 0,
             scene_grid: false,
@@ -129,7 +131,11 @@ impl App {
         self.frames += 1;
         if self.frames == 3 && std::env::var_os("LICHTPULT_SELECT").is_some() {
             let mut e = self.engine.lock().unwrap();
-            let ids: Vec<u32> = if std::env::var("LICHTPULT_SELECT").is_ok_and(|v| v == "7") { vec![7] } else { vec![3, 4] };
+            let ids: Vec<u32> = match std::env::var("LICHTPULT_SELECT").as_deref() {
+                Ok("1") => vec![3, 4],
+                Ok(v) => v.split(',').filter_map(|x| x.parse().ok()).collect(),
+                _ => vec![],
+            };
             e.apply(Action::Select(ids[0]));
             for id in &ids[1..] {
                 e.apply(Action::Toggle(*id));
@@ -137,7 +143,19 @@ impl App {
             e.apply(Action::SetAttr(Attr::Green, 180));
             e.apply(Action::SetAttr(Attr::Dimmer, 220));
         }
-        if self.frames == 8 {
+        if self.frames == 4 {
+            match std::env::var("LICHTPULT_TAB").as_deref() {
+                Ok("pos") => self.pal_kind = Kind::Position,
+                Ok("fx") => self.fx_tab = true,
+                _ => {}
+            }
+            if std::env::var_os("LICHTPULT_PLAY").is_some() {
+                let mut e = self.engine.lock().unwrap();
+                e.apply(Action::ClearProgrammer);
+                e.apply(Action::GotoCue(1));
+            }
+        }
+        if self.frames == 12 {
             let ctx2 = ctx.clone();
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::ScreenshotCallback::new(move |img| {
                 let mut out = format!("P6\n{} {}\n255\n", img.width(), img.height()).into_bytes();
@@ -464,7 +482,6 @@ impl eframe::App for App {
         }
 
         let narrow = ui.available_width() < 1150.0;
-        let side_w = if narrow { 250.0 } else { 330.0 };
         let bar = egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(8, 0));
         egui::Panel::top("top").exact_size(38.0).frame(bar).show(ui, |ui| self.top_bar(ui, &e, &mut acts, narrow));
         let player = egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(0, 0));
@@ -480,13 +497,8 @@ impl eframe::App for App {
             }
         });
         if self.view == View::Pult {
-            let side = egui::Frame::new().fill(theme::PANEL).inner_margin(12);
-            egui::Panel::left("select").default_size(side_w).size_range(220.0..=480.0).frame(side).show(ui, |ui| {
-                self.pult_select(ui, &e, &mut acts);
-            });
-            egui::Panel::right("library").default_size(side_w).size_range(220.0..=480.0).frame(side).show(ui, |ui| {
-                self.pult_library(ui, &e, &mut acts);
-            });
+            let attrs = egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin { left: 12, right: 12, top: 0, bottom: 8 });
+            egui::Panel::bottom("attrs").exact_size(if narrow { 330.0 } else { 340.0 }).frame(attrs).show(ui, |ui| self.pult_attrs(ui, &e, &mut acts));
         }
         let inspector = egui::Frame::new().fill(theme::PANEL).inner_margin(16);
         if self.view == View::Scenes {

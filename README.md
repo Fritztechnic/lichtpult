@@ -1,6 +1,6 @@
 # Lichtpult
 
-Open-Source-Lichtsteuerung für Bühnentechnik, nativ für Linux, geschrieben in Rust (egui). Dunkles Design nach IBM Carbon (g100) mit einstellbarer Akzentfarbe (⚙ oben rechts), Icons von [Lucide](https://lucide.dev) (ISC-Lizenz).
+Open-Source-Lichtsteuerung für Bühnentechnik, nativ für Linux, geschrieben in Rust (egui). Flaches, dunkles Pult-Design im Stil klassischer Lichtpulte (Onyx) mit einstellbarer Akzentfarbe (⚙ oben rechts), Icons von [Lucide](https://lucide.dev) (ISC-Lizenz).
 
 ```
 cargo run --release
@@ -33,7 +33,8 @@ Mehrere Befehle mit `;`: `1 thru 8 @ 50` · `1 + 3 - 2 red 255` · `group 1 pal 
 ## Funktionen
 Mehrere Cuelisten mit Playback-Fadern, Follow/Loop, HTP/LTP-Mischung, Effekt-Engine (Intensität/Farbe/Position), 2D-Bühnenansicht, Undo/Redo, Farbrad/Gobo/Prisma/Iris/Fokus/Frost, 16-Bit-Pan/Tilt (Fine-Kanäle aus OFL), ESP32-Art-Net→DMX-Node (`firmware/esp32-dmx`).
 
-- **Tabs:** *Pult* (Fixtures wählen, Programmer, Paletten, Effekte), *Szenen* (Liste oder Raster, Inspector für Name/Überblendzeit/Auto-Follow, GO/Back), *Bühne* (Fixtures plus Objekte wie Podest, Traverse, Lautsprecher, Pult, Publikum, Beschriftung), *Patch*, *Ausgabe*.
+- **Layout:** Navigationsleiste links, schmale Kopfzeile (GM, Blackout, Ausgabe-Status), unten die Playback-Leiste mit Szenen-Pads (Klick = abrufen, grün = aktiv) und GO/Zurück/Stop.
+- **Tabs:** *Pult* (Pads für Fixtures und Gruppen; unten Attribut-Reiter A Intensität, B Position, C Farbe, D Beam mit Reglern und Paletten, E Effekte), *Szenen* (Liste oder Raster, Inspector für Name/Überblendzeit/Auto-Follow, GO/Back), *Bühne* (Fixtures plus Objekte wie Podest, Traverse, Lautsprecher, Pult, Publikum, Beschriftung), *Patch*, *Ausgabe*.
 - **Szenen:** „Als Szene speichern“ sichert den vollständigen Look aller Fixtures als unabhängige Szene und leert den Programmer. GO/Szenen-Klick leeren den Programmer automatisch, damit manuelle Werte die Szene nicht überdecken.
 - **Autosave:** Die Show wird alle 3 s gespeichert, wenn sie sich geändert hat.
 - **Patch:** Bibliothek mit Kanalvorschau, „Nächste freie“ Adresse, Belegungskarte (512 Kanäle je Universum, Konflikte rot, Klick wählt/setzt Adresse), lückenloses Neuadressieren, Import von OFL-`.json` und GDTF-`.gdtf` (Datei/Ordner/Drag & Drop).
