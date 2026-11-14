@@ -48,12 +48,14 @@ pub fn apply(ctx: &egui::Context, accent: Color32) {
     ctx.set_visuals(v);
 
     ctx.global_style_mut(|s| {
-        s.spacing.item_spacing = egui::vec2(8.0, 6.0);
-        s.spacing.button_padding = egui::vec2(10.0, 4.0);
-        s.spacing.interact_size.y = 26.0;
+        s.spacing.item_spacing = egui::vec2(8.0, 8.0);
+        s.spacing.button_padding = egui::vec2(12.0, 5.0);
+        s.spacing.interact_size.y = 30.0;
         s.spacing.slider_width = 320.0;
-        s.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(13.5));
-        s.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(13.5));
+        s.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(14.0));
+        s.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
+        s.text_styles.insert(egui::TextStyle::Small, egui::FontId::proportional(12.0));
+        s.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(13.0));
         s.text_styles.insert(egui::TextStyle::Heading, egui::FontId::proportional(18.0));
     });
 }
@@ -61,7 +63,7 @@ pub fn apply(ctx: &egui::Context, accent: Color32) {
 /// Auswahl-Chip (Gruppen, Paletten, Listen, Umschalter).
 pub fn tile(ui: &mut egui::Ui, text: impl Into<String>, on: bool, accent: Color32) -> egui::Response {
     let text: String = text.into();
-    let mut b = egui::Button::new(egui::RichText::new(text).color(if on { accent } else { TEXT })).min_size(egui::vec2(0.0, 28.0));
+    let mut b = egui::Button::new(egui::RichText::new(text).color(if on { accent } else { TEXT })).min_size(egui::vec2(0.0, 30.0));
     if on {
         b = b.fill(accent.gamma_multiply(0.16)).stroke(Stroke::new(1.0, accent));
     }
@@ -83,25 +85,25 @@ pub fn nav(ui: &mut egui::Ui, text: &str, on: bool, accent: Color32) -> egui::Re
 
 /// Kleine Statusanzeige mit Punkt.
 pub fn pill(ui: &mut egui::Ui, text: &str, color: Color32) {
-    ui.label(egui::RichText::new(format!("● {text}")).small().color(color));
+    ui.label(egui::RichText::new(format!("● {text}")).size(12.5).color(color));
 }
 
 /// Dezente Abschnittsüberschrift.
 pub fn caption(ui: &mut egui::Ui, text: &str) {
-    ui.label(egui::RichText::new(text.to_uppercase()).size(11.0).color(MUTED).strong());
+    ui.label(egui::RichText::new(text.to_uppercase()).size(11.5).color(MUTED).strong());
 }
 
 /// Abschnittsüberschrift mit Erklärung im Tooltip (ⓘ).
 pub fn section(ui: &mut egui::Ui, text: &str, help: &str) {
     ui.horizontal(|ui| {
         caption(ui, text);
-        ui.label(egui::RichText::new("ⓘ").small().color(MUTED)).on_hover_text(help);
+        ui.label(egui::RichText::new("ⓘ").size(12.5).color(MUTED)).on_hover_text(help);
     });
 }
 
 /// Erklärtext in Grau.
 pub fn hint(ui: &mut egui::Ui, text: &str) {
-    ui.label(egui::RichText::new(text).size(12.0).color(MUTED));
+    ui.label(egui::RichText::new(text).size(12.5).color(MUTED));
 }
 
 pub fn attr_tint(a: lichtpult::fixture::Attr, accent: Color32) -> Color32 {
@@ -163,11 +165,12 @@ pub fn card<R>(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui) -
         .fill(PANEL)
         .stroke(Stroke::new(1.0, LINE))
         .corner_radius(10)
-        .inner_margin(12)
+        .inner_margin(16)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             if !title.is_empty() {
                 caption(ui, title);
+                ui.add_space(4.0);
             }
             add(ui)
         })

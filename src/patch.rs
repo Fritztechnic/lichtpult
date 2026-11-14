@@ -1,6 +1,6 @@
 //! Patch: Bibliothek, Adressierung, Belegungskarte und Tabelle.
 
-use crate::theme::{self, card, caption, tile};
+use crate::theme::{self, caption, tile};
 use crate::{App, short};
 use eframe::egui::{self, Color32, RichText};
 use lichtpult::engine::{Action, Engine};
@@ -8,28 +8,29 @@ use lichtpult::fixture::Attr;
 
 impl App {
     pub fn patch(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
-        ui.horizontal_top(|ui| {
-            ui.vertical(|ui| {
-                ui.set_width(340.0);
-                self.patch_add(ui, e, acts);
-            });
-            ui.separator();
-            ui.vertical(|ui| self.patch_map(ui, e, acts));
-        });
+        self.patch_map(ui, e, acts);
     }
 
-    fn patch_add(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
+    /// Seitenleiste: Bibliothek durchsuchen und patchen.
+    pub fn patch_side(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
         let accent = self.accent();
-        caption(ui, "Fixture hinzufügen");
-        ui.add(egui::TextEdit::singleline(&mut self.search).hint_text("Bibliothek durchsuchen…").desired_width(f32::INFINITY));
+        caption(ui, "Bibliothek");
+        ui.add(egui::TextEdit::singleline(&mut self.search).hint_text("Suchen…").desired_width(f32::INFINITY));
         let q = self.search.to_lowercase();
         let hits: Vec<usize> = (0..self.library.len()).filter(|&i| self.library[i].name.to_lowercase().contains(&q)).collect();
-        egui::ScrollArea::vertical().id_salt("lib").max_height((ui.available_height() * 0.45).max(120.0)).show(ui, |ui| {
+        let list_h = (ui.available_height() - 250.0).max(120.0);
+        egui::ScrollArea::vertical().id_salt("lib").max_height(list_h).min_scrolled_height(list_h).show(ui, |ui| {
             ui.set_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = 2.0;
             for &i in hits.iter().take(200) {
-                let ch = self.library[i].channels.len();
                 let on = self.patch.0 == i;
-                if ui.selectable_label(on, format!("{}  ·  {ch} Kanäle", short(&self.library[i].name, 34))).clicked() {
+                let t = &self.library[i];
+                let label = format!("{}   ·   {} Kanäle", short(&t.name, 28), t.channels.len());
+                let b = egui::Button::new(RichText::new(label).color(if on { accent } else { theme::TEXT }))
+                    .fill(if on { accent.gamma_multiply(0.16) } else { Color32::TRANSPARENT })
+                    .stroke(egui::Stroke::NONE)
+                    .min_size(egui::vec2(ui.available_width(), 30.0));
+                if ui.add(b).clicked() {
                     self.patch.0 = i;
                 }
             }
@@ -37,41 +38,37 @@ impl App {
                 ui.label(RichText::new(format!("… {} weitere – Suche eingrenzen", hits.len() - 200)).color(theme::MUTED));
             }
         });
-        ui.add_space(6.0);
+        ui.add_space(8.0);
+        ui.separator();
+        ui.add_space(4.0);
         let Some(ty) = self.library.get(self.patch.0).cloned() else { return };
-        card(ui, &short(&ty.name, 30), |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
-                for (n, c) in ty.channels.iter().enumerate() {
-                    let (label, col) = match c {
-                        Some(Attr::PanFine) => ("Pan fein".to_string(), theme::attr_tint(Attr::Pan, accent)),
-                        Some(Attr::TiltFine) => ("Tilt fein".to_string(), theme::attr_tint(Attr::Tilt, accent)),
-                        Some(a) => (a.name().to_string(), theme::attr_tint(*a, accent)),
-                        None => ("—".to_string(), theme::MUTED),
-                    };
-                    ui.label(RichText::new(format!("{} {label}", n + 1)).small().color(col));
+        let width = ty.channels.len() as u16;
+        let free = e.show.free_address(self.patch.2, width.max(1));
+        egui::Grid::new("patch_form").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
+            ui.label(RichText::new("Anzahl").color(theme::MUTED));
+            ui.add(egui::DragValue::new(&mut self.patch.1).range(1..=512));
+            ui.end_row();
+            ui.label(RichText::new("Universum").color(theme::MUTED));
+            ui.add(egui::DragValue::new(&mut self.patch.2).range(1..=32768));
+            ui.end_row();
+            ui.label(RichText::new("Adresse").color(theme::MUTED));
+            ui.horizontal(|ui| {
+                ui.add(egui::DragValue::new(&mut self.patch.3).range(1..=512));
+                if ui.button("Nächste freie").clicked() {
+                    if let Some(a) = free {
+                        self.patch.3 = a;
+                    }
                 }
             });
+            ui.end_row();
         });
-        let width = ty.channels.len() as u16;
-        ui.horizontal(|ui| {
-            ui.add(egui::DragValue::new(&mut self.patch.1).range(1..=512).prefix("Anzahl "));
-            ui.add(egui::DragValue::new(&mut self.patch.2).range(1..=32768).prefix("Universum "));
-        });
-        let free = e.show.free_address(self.patch.2, width.max(1));
-        ui.horizontal(|ui| {
-            ui.add(egui::DragValue::new(&mut self.patch.3).range(1..=512).prefix("Adresse "));
-            if ui.button("Nächste freie").clicked() {
-                if let Some(a) = free {
-                    self.patch.3 = a;
-                }
-            }
-        });
-        let fits = self.patch.3 as u32 + self.patch.1 as u32 * width as u32 <= 513;
-        if !fits {
-            ui.label(RichText::new("Passt nicht mehr ins Universum – es werden so viele gepatcht wie passen.").small().color(theme::DANGER));
+        if self.patch.3 as u32 + self.patch.1 as u32 * width as u32 > 513 {
+            ui.label(RichText::new("Passt nicht ganz ins Universum – es werden so viele gepatcht wie passen.").size(12.5).color(theme::DANGER));
         }
-        if ui.add_enabled(width > 0, egui::Button::new("Patchen")).clicked() {
+        let go = egui::Button::new(RichText::new(format!("{} patchen", short(&ty.name, 22))).strong().color(Color32::BLACK))
+            .fill(accent)
+            .min_size(egui::vec2(ui.available_width(), 34.0));
+        if ui.add_enabled(width > 0, go).clicked() {
             let (lib, count, universe, address) = self.patch;
             let ty = self.library[lib].clone();
             let index = e.show.types.iter().position(|t| t.name == ty.name).unwrap_or(e.show.types.len());
@@ -80,15 +77,19 @@ impl App {
             self.patch.3 = (address as u32 + count as u32 * width as u32).min(512) as u16;
         }
         ui.add_space(8.0);
-        caption(ui, "Importieren (OFL .json · GDTF .gdtf)");
+        ui.separator();
+        ui.add_space(4.0);
+        caption(ui, "Importieren (.json · .gdtf)");
         ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut self.import_path).hint_text("Datei/Ordner oder hierher ziehen").desired_width(220.0));
+            ui.add(egui::TextEdit::singleline(&mut self.import_path).hint_text("Pfad oder Datei hierher ziehen").desired_width(ui.available_width() - 80.0));
             if ui.button("Import").clicked() {
                 let p = std::path::PathBuf::from(self.import_path.trim());
                 self.import(vec![p]);
             }
         });
-        ui.label(RichText::new(&self.status).small().color(theme::MUTED));
+        if !self.status.is_empty() {
+            theme::hint(ui, &self.status);
+        }
     }
 
     fn patch_map(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
@@ -128,7 +129,7 @@ impl App {
             }
         }
         let used = owner.iter().filter(|o| !o.is_empty()).count();
-        ui.label(RichText::new(format!("{used} von 512 Kanälen belegt")).small().color(theme::MUTED));
+        ui.label(RichText::new(format!("{used} von 512 Kanälen belegt")).size(12.5).color(theme::MUTED));
         let cell = ((ui.available_width() - 4.0) / 32.0).clamp(16.0, 32.0);
         let (rect, resp) = ui.allocate_exact_size(egui::vec2(cell * 32.0, cell * 16.0 * 0.75), egui::Sense::click());
         let ch = cell * 0.75;
@@ -174,9 +175,9 @@ impl App {
         ui.add_space(6.0);
         caption(ui, "Gepatchte Fixtures");
         egui::ScrollArea::vertical().id_salt("patched").show(ui, |ui| {
-            egui::Grid::new("patch_grid").striped(true).spacing([14.0, 5.0]).show(ui, |ui| {
-                for h in ["ID", "Name", "Typ", "Univ.", "Adresse", "Bereich", ""] {
-                    ui.label(RichText::new(h).small().color(theme::MUTED));
+            egui::Grid::new("patch_grid").striped(true).spacing([16.0, 6.0]).show(ui, |ui| {
+                for h in ["ID", "Name", "Univ.", "Adresse", "Bereich", ""] {
+                    ui.label(RichText::new(h).size(12.0).color(theme::MUTED));
                 }
                 ui.end_row();
                 for f in &e.show.fixtures {
@@ -187,10 +188,10 @@ impl App {
                         self.patch.2 = f.universe;
                     }
                     let mut name = f.name.clone();
-                    if ui.add_sized([150.0, 24.0], egui::TextEdit::singleline(&mut name)).changed() {
+                    let tn = e.show.types[f.ty].name.clone();
+                    if ui.add_sized([150.0, 26.0], egui::TextEdit::singleline(&mut name)).on_hover_text(tn).changed() {
                         acts.push(Action::RenameFixture(f.id, name));
                     }
-                    ui.label(RichText::new(short(&e.show.types[f.ty].name, 26)).color(theme::MUTED));
                     let (mut uni, mut adr) = (f.universe, f.address);
                     let a = ui.add(egui::DragValue::new(&mut uni).range(1..=32768)).changed();
                     let b = ui.add(egui::DragValue::new(&mut adr).range(1..=512)).changed();

@@ -174,13 +174,13 @@ impl App {
         }
     }
 
-    fn top_bar(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
+    fn top_bar(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>, narrow: bool) {
         let accent = self.accent();
         ui.horizontal_centered(|ui| {
             ui.add_space(6.0);
             ui.label(RichText::new("●").color(accent).size(12.0));
             ui.label(RichText::new("LICHTPULT").strong().size(15.0).color(theme::TEXT));
-            ui.add_space(18.0);
+            ui.add_space(if narrow { 8.0 } else { 18.0 });
             ui.spacing_mut().item_spacing.x = 0.0;
             for (v, name) in [
                 (View::Pult, "Pult"),
@@ -206,11 +206,13 @@ impl App {
                     acts.push(Action::Blackout(black));
                 }
                 let mut m = e.master;
-                ui.spacing_mut().slider_width = 130.0;
+                ui.spacing_mut().slider_width = if narrow { 70.0 } else { 130.0 };
                 if ui.add(egui::Slider::new(&mut m, 0..=255).show_value(false)).changed() {
                     acts.push(Action::Master(m));
                 }
-                ui.label(RichText::new(format!("Master {}%", (m as u32 * 100 + 127) / 255)).small().color(theme::MUTED));
+                if !narrow {
+                    ui.label(RichText::new(format!("Master {}%", (m as u32 * 100 + 127) / 255)).size(12.5).color(theme::MUTED));
+                }
                 ui.add_space(8.0);
                 if ui.add_enabled(e.can_redo(), egui::Button::new("↷")).on_hover_text("Wiederholen (Strg+Shift+Z)").clicked() {
                     acts.push(Action::Redo);
@@ -294,7 +296,7 @@ impl App {
         ui.horizontal_centered(|ui| {
             ui.add_space(6.0);
             ui.label(RichText::new("›").color(accent).strong());
-            let w = (ui.available_width() - 330.0).max(200.0);
+            let w = (ui.available_width() - 330.0).max(120.0);
             let r = ui.add_sized(
                 [w, 24.0],
                 egui::TextEdit::singleline(&mut self.cmd)
@@ -395,20 +397,26 @@ impl eframe::App for App {
             ui.memory_mut(|m| m.request_focus(egui::Id::new("cmdline")));
         }
 
+        let narrow = ui.available_width() < 1150.0;
+        let side_w = if narrow { 250.0 } else { 330.0 };
         let bar = egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(8, 0));
-        egui::Panel::top("top").exact_size(46.0).frame(bar).show(ui, |ui| self.top_bar(ui, &e, &mut acts));
+        egui::Panel::top("top").exact_size(46.0).frame(bar).show(ui, |ui| self.top_bar(ui, &e, &mut acts, narrow));
         egui::Panel::bottom("footer").exact_size(34.0).frame(bar).show(ui, |ui| self.command_bar(ui, &e, &mut acts));
         if self.view != View::Scenes {
             egui::Panel::bottom("transport").exact_size(46.0).frame(bar).show(ui, |ui| self.transport(ui, &e, &mut acts));
         }
         if self.view == View::Pult {
             let side = egui::Frame::new().fill(theme::PANEL).inner_margin(12);
-            egui::Panel::left("select").default_size(330.0).size_range(260.0..=480.0).frame(side).show(ui, |ui| {
+            egui::Panel::left("select").default_size(side_w).size_range(220.0..=480.0).frame(side).show(ui, |ui| {
                 self.pult_select(ui, &e, &mut acts);
             });
-            egui::Panel::right("library").default_size(330.0).size_range(260.0..=480.0).frame(side).show(ui, |ui| {
+            egui::Panel::right("library").default_size(side_w).size_range(220.0..=480.0).frame(side).show(ui, |ui| {
                 self.pult_library(ui, &e, &mut acts);
             });
+        }
+        if self.view == View::Patch {
+            let side = egui::Frame::new().fill(theme::PANEL).inner_margin(16);
+            egui::Panel::left("patch_side").exact_size(if narrow { 280.0 } else { 360.0 }).frame(side).show(ui, |ui| self.patch_side(ui, &e, &mut acts));
         }
         let center = egui::Frame::new().fill(theme::BG).inner_margin(16);
         egui::CentralPanel::default().frame(center).show(ui, |ui| match self.view {
