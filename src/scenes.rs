@@ -1,6 +1,6 @@
 //! Szenen: Cuelisten als Raster aus abrufbaren Szenen-Pads.
 
-use crate::theme::{self, card, hfader, hint, pill, tile, Fader};
+use crate::theme::{self, card, hint, pill, tile};
 use crate::{App, play, short};
 use eframe::egui::{self, Color32, RichText};
 use lichtpult::engine::{Action, Cue, Engine};
@@ -23,17 +23,35 @@ fn preview(e: &Engine, cue: &Cue) -> Vec<Color32> {
         .collect()
 }
 
+const ROW_H: f32 = 44.0;
+
 impl App {
     pub fn scenes(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
         let accent = self.accent();
         let active = e.active;
+        let list = e.list();
+        let cur = e.cue();
+        self.scene_sel = self.scene_sel.min(list.cues.len().saturating_sub(1));
+
         ui.horizontal(|ui| {
             ui.label(RichText::new("Szenen").heading().strong());
-            hint(ui, "Eine Szene ist ein gespeicherter Look. Klick auf ein Pad = Szene abrufen.");
+            theme::info(ui, "Szenen", "Eine Szene ist ein gespeicherter Look. Mehrere Szenen bilden eine Cueliste, die du mit GO nacheinander abspielst. Ein Doppelklick oder das Play-Symbol ruft eine Szene direkt ab; rechts bearbeitest du die ausgewählte Szene.");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let save = theme::icon_text("plus", "Szene speichern", Color32::BLACK).fill(accent).min_size(egui::vec2(150.0, 32.0));
+                if ui.add_enabled(!e.show.fixtures.is_empty(), save).on_hover_text("Speichert den aktuellen Look aller Fixtures als neue Szene").clicked() {
+                    acts.push(Action::StoreScene);
+                    self.scene_sel = list.cues.len();
+                }
+                for (grid, icon, tip) in [(true, "grid", "Raster"), (false, "list", "Liste")] {
+                    let on = self.scene_grid == grid;
+                    let b = egui::Button::image(theme::icon(icon, if on { accent } else { theme::TEXT }, 16.0)).min_size(egui::vec2(32.0, 32.0)).selected(on);
+                    if ui.add(b).on_hover_text(tip).clicked() {
+                        self.scene_grid = grid;
+                    }
+                }
+            });
         });
-        ui.add_space(6.0);
 
-        // Listen
         ui.horizontal_wrapped(|ui| {
             for (i, l) in e.show.lists.iter().enumerate() {
                 let on = e.players.get(i).is_some_and(|p| p.cue.is_some());
@@ -46,158 +64,212 @@ impl App {
                 acts.push(Action::AddList);
             }
         });
-        ui.add_space(6.0);
 
-        // Transport
-        let list = e.list();
-        let cur = e.cue();
         card(ui, "", |ui| {
             ui.horizontal(|ui| {
-                let big = egui::vec2(52.0, 44.0);
-                if ui.add(egui::Button::image(theme::icon("back", theme::TEXT, 20.0)).min_size(big)).on_hover_text("Zurück (Backspace)").clicked() {
+                let big = egui::vec2(48.0, 40.0);
+                if ui.add(egui::Button::image(theme::icon("back", theme::TEXT, 18.0)).min_size(big)).on_hover_text("Zurück (Backspace)").clicked() {
                     play(acts, e, Action::Back(active));
                 }
-                let go = theme::icon_text("play", "GO", Color32::BLACK).fill(accent).min_size(egui::vec2(110.0, 44.0));
+                let go = theme::icon_text("play", "GO", Color32::BLACK).fill(accent).min_size(egui::vec2(104.0, 40.0));
                 if ui.add(go).on_hover_text("Nächste Szene (Leertaste)").clicked() {
                     play(acts, e, Action::Go(active));
                 }
-                if ui.add(egui::Button::image(theme::icon("stop", theme::TEXT, 20.0)).min_size(big)).on_hover_text("Liste ausschalten").clicked() {
+                if ui.add(egui::Button::image(theme::icon("stop", theme::TEXT, 18.0)).min_size(big)).on_hover_text("Liste ausschalten").clicked() {
                     acts.push(Action::ReleaseList(active));
                 }
                 ui.add_space(12.0);
                 ui.vertical(|ui| {
                     let now = cur.and_then(|c| list.cues.get(c)).map_or("—".to_string(), |c| c.name.clone());
                     let next = list.cues.get(cur.map_or(0, |c| c + 1)).map_or("—".to_string(), |c| c.name.clone());
-                    ui.label(RichText::new(format!("Aktuell: {now}")).strong());
-                    ui.label(RichText::new(format!("Danach: {next}")).color(theme::MUTED));
+                    ui.label(RichText::new(format!("Aktuell: {}", short(&now, 18))).strong());
+                    ui.label(RichText::new(format!("Danach: {}", short(&next, 18))).color(theme::MUTED));
                 });
                 ui.add_space(12.0);
-                let lvl = e.players.get(active).map_or(255, |p| p.level);
-                ui.vertical(|ui| {
-                    ui.set_width(260.0);
-                    if let Fader::Set(v) = hfader(ui, "Helligkeit", lvl, accent, false) {
-                        acts.push(Action::SetLevel(active, v));
+                let mut lvl = e.players.get(active).map_or(255, |p| p.level) as f32 / 2.55;
+                ui.label(RichText::new("Helligkeit").color(theme::MUTED));
+                ui.scope(|ui| {
+                    ui.spacing_mut().slider_width = (ui.available_width() - 520.0).clamp(60.0, 220.0);
+                    if ui.add(egui::Slider::new(&mut lvl, 0.0..=100.0).fixed_decimals(0).suffix("%")).changed() {
+                        acts.push(Action::SetLevel(active, (lvl * 2.55).round() as u8));
                     }
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if e.show.lists.len() > 1 && theme::icon_btn(ui, "trash", "Liste löschen").clicked() {
+                        acts.push(Action::DeleteList(active));
+                    }
                     let mut name = list.name.clone();
-                    if ui.add(egui::TextEdit::singleline(&mut name).desired_width(140.0)).changed() {
+                    if ui.add(egui::TextEdit::singleline(&mut name).desired_width(130.0)).changed() {
                         acts.push(Action::RenameList(active, name));
                     }
                     let mut looped = list.looped;
                     if ui.checkbox(&mut looped, "Schleife").on_hover_text("Nach der letzten Szene wieder bei der ersten beginnen").changed() {
                         acts.push(Action::SetLooped(active, looped));
                     }
-                    if e.show.lists.len() > 1 && ui.button("Liste löschen").clicked() {
-                        acts.push(Action::DeleteList(active));
-                    }
                 });
             });
             if !e.programmer.is_empty() {
-                ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     pill(ui, "Programmer aktiv – überdeckt Szenen", theme::DANGER);
-                    if ui.button("Programmer leeren").clicked() {
+                    if ui.small_button("Programmer leeren").clicked() {
                         acts.push(Action::ClearProgrammer);
                     }
                 });
             }
         });
-        ui.add_space(8.0);
 
-        egui::ScrollArea::vertical().id_salt("pads").show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = egui::vec2(10.0, 10.0);
-                for (i, c) in list.cues.iter().enumerate() {
-                    let live = cur == Some(i);
-                    let (rect, r) = ui.allocate_exact_size(egui::vec2(176.0, 96.0), egui::Sense::click());
-                    let p = ui.painter();
-                    let fill = if r.hovered() { Color32::from_rgb(34, 40, 52) } else { theme::PANEL };
-                    p.rect(rect, 10.0, fill, egui::Stroke::new(if live { 2.0 } else { 1.0 }, if live { accent } else { theme::LINE }), egui::StrokeKind::Inside);
-                    p.text(rect.left_top() + egui::vec2(12.0, 10.0), egui::Align2::LEFT_TOP, (i + 1).to_string(), egui::FontId::proportional(18.0), if live { accent } else { theme::TEXT });
-                    if live {
-                        p.text(rect.right_top() + egui::vec2(-12.0, 13.0), egui::Align2::RIGHT_TOP, "LIVE", egui::FontId::proportional(11.0), accent);
-                    }
-                    p.text(rect.left_top() + egui::vec2(12.0, 36.0), egui::Align2::LEFT_TOP, short(&c.name, 20), egui::FontId::proportional(13.5), theme::TEXT);
-                    let mut info = format!("{:.1} s", c.fade);
-                    if let Some(f) = c.follow {
-                        info.push_str(&format!(" · Follow {f:.1} s"));
-                    }
-                    p.text(rect.left_top() + egui::vec2(12.0, 56.0), egui::Align2::LEFT_TOP, info, egui::FontId::proportional(11.0), theme::MUTED);
-                    let cols = preview(e, c);
-                    let strip = egui::Rect::from_min_size(rect.left_bottom() + egui::vec2(12.0, -16.0), egui::vec2(rect.width() - 24.0, 6.0));
-                    p.rect_filled(strip, 3.0, theme::LINE);
-                    if !cols.is_empty() {
-                        let w = strip.width() / cols.len() as f32;
-                        for (k, col) in cols.iter().enumerate() {
-                            let seg = egui::Rect::from_min_size(strip.min + egui::vec2(k as f32 * w, 0.0), egui::vec2(w.max(1.0), strip.height()));
-                            p.rect_filled(seg, 0.0, *col);
-                        }
-                    }
-                    if r.clicked() {
-                        play(acts, e, Action::GotoCue(i));
-                    }
-                    r.context_menu(|ui| {
-                        let mut name = c.name.clone();
-                        if ui.text_edit_singleline(&mut name).changed() {
-                            acts.push(Action::RenameCue(i, name));
-                        }
-                        if ui.add_enabled(!e.programmer.is_empty(), egui::Button::new("Mit Programmer überschreiben")).clicked() {
-                            acts.push(Action::UpdateCue(i));
-                            ui.close();
-                        }
-                        if ui.button("Löschen").clicked() {
-                            acts.push(Action::DeleteCue(i));
-                            ui.close();
-                        }
-                    });
-                }
-                let (rect, r) = ui.allocate_exact_size(egui::vec2(176.0, 96.0), egui::Sense::click());
-                let col = if r.hovered() { accent } else { theme::MUTED };
-                ui.painter().rect(rect, 10.0, Color32::TRANSPARENT, egui::Stroke::new(1.0, col), egui::StrokeKind::Inside);
-                ui.painter().text(rect.center() - egui::vec2(0.0, 8.0), egui::Align2::CENTER_CENTER, "＋", egui::FontId::proportional(24.0), col);
-                ui.painter().text(rect.center() + egui::vec2(0.0, 16.0), egui::Align2::CENTER_CENTER, "Szene speichern", egui::FontId::proportional(12.0), col);
-                if r.on_hover_text("Speichert den aktuellen Look aller Fixtures als neue Szene").clicked() {
-                    acts.push(Action::StoreScene);
-                }
+        if list.cues.is_empty() {
+            ui.add_space(40.0);
+            ui.vertical_centered(|ui| {
+                ui.label(RichText::new("Noch keine Szenen").size(20.0).color(theme::MUTED));
+                ui.label(RichText::new("Stelle im Tab „Pult“ einen Look ein und speichere ihn mit „Szene speichern“.").color(theme::MUTED));
             });
-            if list.cues.is_empty() {
-                ui.add_space(8.0);
-                hint(ui, "Noch keine Szenen. Stelle im Tab „Pult“ einen Look ein und speichere ihn hier – oder klicke auf „＋ Szene speichern“.");
-            }
-            if let Some(i) = cur.filter(|i| *i < list.cues.len()) {
-                ui.add_space(12.0);
-                let c = &list.cues[i];
-                card(ui, &format!("Szene {} bearbeiten", i + 1), |ui| {
-                    ui.horizontal(|ui| {
-                        let mut name = c.name.clone();
-                        if ui.add(egui::TextEdit::singleline(&mut name).desired_width(200.0)).changed() {
-                            acts.push(Action::RenameCue(i, name));
-                        }
-                        let mut fade = c.fade;
-                        if ui.add(egui::DragValue::new(&mut fade).speed(0.05).range(0.0..=300.0).suffix(" s").prefix("Überblendzeit ")).changed() {
-                            acts.push(Action::SetCueFade(i, fade));
-                        }
-                        let mut auto = c.follow.is_some();
-                        if ui.checkbox(&mut auto, "Automatisch weiter").on_hover_text("Nach dem Überblenden und der Wartezeit startet die nächste Szene von selbst").changed() {
-                            acts.push(Action::SetCueFollow(i, auto.then_some(2.0)));
-                        }
-                        if let Some(mut f) = c.follow {
-                            if ui.add(egui::DragValue::new(&mut f).speed(0.05).range(0.0..=300.0).suffix(" s").prefix("nach ")).changed() {
-                                acts.push(Action::SetCueFollow(i, Some(f)));
-                            }
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        if ui.add_enabled(!e.programmer.is_empty(), egui::Button::new("Mit Programmer überschreiben")).clicked() {
-                            acts.push(Action::UpdateCue(i));
-                        }
-                        if ui.button("Löschen").clicked() {
-                            acts.push(Action::DeleteCue(i));
-                        }
-                    });
-                });
+            return;
+        }
+        egui::ScrollArea::vertical().id_salt("pads").auto_shrink([false, false]).show(ui, |ui| {
+            if self.scene_grid {
+                self.scene_pads(ui, e, acts);
+            } else {
+                self.scene_table(ui, e, acts);
             }
         });
+    }
+
+    fn scene_table(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
+        let accent = self.accent();
+        let list = e.list();
+        let cur = e.cue();
+        let w = ui.available_width();
+        let (hr, _) = ui.allocate_exact_size(egui::vec2(w, 22.0), egui::Sense::hover());
+        for (x, t) in [(52.0, "SZENE"), (w - 330.0, "ÜBERBLENDEN"), (w - 220.0, "WEITER"), (w - 130.0, "LOOK")] {
+            ui.painter().text(egui::pos2(hr.left() + x, hr.center().y), egui::Align2::LEFT_CENTER, t, egui::FontId::proportional(11.0), theme::MUTED);
+        }
+        ui.spacing_mut().item_spacing.y = 2.0;
+        for (i, c) in list.cues.iter().enumerate() {
+            let live = cur == Some(i);
+            let picked = self.scene_sel == i;
+            let (rect, r) = ui.allocate_exact_size(egui::vec2(w, ROW_H), egui::Sense::click());
+            let p = ui.painter();
+            let fill = if picked { theme::RAISED } else if r.hovered() { theme::HOVER.gamma_multiply(0.5) } else { theme::PANEL };
+            p.rect_filled(rect, 2.0, fill);
+            if live {
+                p.rect_filled(egui::Rect::from_min_size(rect.min, egui::vec2(3.0, rect.height())), 0.0, accent);
+            }
+            let play_rect = egui::Rect::from_center_size(rect.left_center() + egui::vec2(24.0, 0.0), egui::vec2(28.0, 28.0));
+            let over_play = r.hover_pos().is_some_and(|h| play_rect.contains(h));
+            if over_play {
+                p.rect_filled(play_rect, 4.0, theme::HOVER);
+            }
+            theme::icon(if live { "stop" } else { "play" }, if live { accent } else { theme::MUTED }, 14.0).paint_at(ui, play_rect.shrink(7.0));
+            let p = ui.painter();
+            let mid = rect.center().y;
+            p.text(egui::pos2(rect.left() + 52.0, mid), egui::Align2::LEFT_CENTER, format!("{}  {}", i + 1, short(&c.name, 28)), egui::FontId::proportional(14.0), if live { accent } else { theme::TEXT });
+            p.text(egui::pos2(rect.left() + w - 330.0, mid), egui::Align2::LEFT_CENTER, format!("{:.1} s", c.fade), egui::FontId::monospace(13.0), theme::MUTED);
+            let follow = c.follow.map_or("—".to_string(), |f| format!("{f:.1} s"));
+            p.text(egui::pos2(rect.left() + w - 220.0, mid), egui::Align2::LEFT_CENTER, follow, egui::FontId::monospace(13.0), theme::MUTED);
+            let strip = egui::Rect::from_min_size(egui::pos2(rect.right() - 130.0, mid - 5.0), egui::vec2(118.0, 10.0));
+            draw_strip(p, strip, &preview(e, c));
+            if r.clicked() {
+                self.scene_sel = i;
+                if over_play {
+                    play(acts, e, Action::GotoCue(i));
+                }
+            }
+            if r.double_clicked() {
+                play(acts, e, Action::GotoCue(i));
+            }
+        }
+    }
+
+    fn scene_pads(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
+        let accent = self.accent();
+        let list = e.list();
+        let cur = e.cue();
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+            for (i, c) in list.cues.iter().enumerate() {
+                let live = cur == Some(i);
+                let picked = self.scene_sel == i;
+                let (rect, r) = ui.allocate_exact_size(egui::vec2(168.0, 92.0), egui::Sense::click());
+                let p = ui.painter();
+                let fill = if r.hovered() { theme::HOVER } else if picked { theme::RAISED } else { theme::PANEL };
+                let line = if live { accent } else if picked { theme::MUTED } else { theme::LINE };
+                p.rect(rect, 4.0, fill, egui::Stroke::new(if live { 2.0 } else { 1.0 }, line), egui::StrokeKind::Inside);
+                p.text(rect.left_top() + egui::vec2(12.0, 10.0), egui::Align2::LEFT_TOP, (i + 1).to_string(), egui::FontId::proportional(18.0), if live { accent } else { theme::TEXT });
+                if live {
+                    p.text(rect.right_top() + egui::vec2(-12.0, 13.0), egui::Align2::RIGHT_TOP, "LIVE", egui::FontId::proportional(11.0), accent);
+                }
+                p.text(rect.left_top() + egui::vec2(12.0, 36.0), egui::Align2::LEFT_TOP, short(&c.name, 19), egui::FontId::proportional(13.5), theme::TEXT);
+                p.text(rect.left_top() + egui::vec2(12.0, 55.0), egui::Align2::LEFT_TOP, format!("{:.1} s", c.fade), egui::FontId::proportional(11.5), theme::MUTED);
+                let strip = egui::Rect::from_min_size(rect.left_bottom() + egui::vec2(12.0, -16.0), egui::vec2(rect.width() - 24.0, 6.0));
+                draw_strip(p, strip, &preview(e, c));
+                if r.clicked() {
+                    self.scene_sel = i;
+                    play(acts, e, Action::GotoCue(i));
+                }
+            }
+        });
+    }
+
+    /// Rechte Leiste: ausgewählte Szene bearbeiten.
+    pub fn scene_inspector(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
+        let list = e.list();
+        let i = self.scene_sel;
+        let Some(c) = list.cues.get(i) else {
+            theme::caption(ui, "Szene bearbeiten");
+            ui.add_space(8.0);
+            hint(ui, "Keine Szene ausgewählt.");
+            return;
+        };
+        theme::section(ui, &format!("Szene {}", i + 1), "Hier änderst du Name, Überblendzeit und automatischen Ablauf der ausgewählten Szene. „Look aktualisieren“ übernimmt die aktuellen Programmer-Werte.");
+        ui.add_space(8.0);
+        let mut name = c.name.clone();
+        if ui.add(egui::TextEdit::singleline(&mut name).desired_width(f32::INFINITY)).changed() {
+            acts.push(Action::RenameCue(i, name));
+        }
+        ui.add_space(4.0);
+        egui::Grid::new("scene_form").num_columns(2).spacing([12.0, 10.0]).show(ui, |ui| {
+            ui.label("Überblenden");
+            let mut fade = c.fade;
+            if ui.add(egui::DragValue::new(&mut fade).speed(0.05).range(0.0..=300.0).suffix(" s")).changed() {
+                acts.push(Action::SetCueFade(i, fade));
+            }
+            ui.end_row();
+            ui.label("Automatisch weiter");
+            let mut auto = c.follow.is_some();
+            if ui.checkbox(&mut auto, "").on_hover_text("Nach dem Überblenden und der Wartezeit startet die nächste Szene von selbst").changed() {
+                acts.push(Action::SetCueFollow(i, auto.then_some(2.0)));
+            }
+            ui.end_row();
+            if let Some(mut f) = c.follow {
+                ui.label("Wartezeit");
+                if ui.add(egui::DragValue::new(&mut f).speed(0.05).range(0.0..=300.0).suffix(" s")).changed() {
+                    acts.push(Action::SetCueFollow(i, Some(f)));
+                }
+                ui.end_row();
+            }
+        });
+        ui.add_space(12.0);
+        let full = egui::vec2(ui.available_width(), 34.0);
+        if ui.add(theme::icon_text("play", "Abrufen", theme::TEXT).min_size(full)).clicked() {
+            play(acts, e, Action::GotoCue(i));
+        }
+        if ui.add_enabled(!e.programmer.is_empty(), theme::icon_text("reset", "Look aktualisieren", theme::TEXT).min_size(full)).on_hover_text("Ersetzt den Look dieser Szene durch die aktuellen Programmer-Werte").clicked() {
+            acts.push(Action::UpdateCue(i));
+        }
+        if ui.add(theme::icon_text("trash", "Szene löschen", theme::DANGER).min_size(full)).clicked() {
+            acts.push(Action::DeleteCue(i));
+        }
+    }
+}
+
+fn draw_strip(p: &egui::Painter, strip: egui::Rect, cols: &[Color32]) {
+    p.rect_filled(strip, 2.0, theme::LINE);
+    if !cols.is_empty() {
+        let w = strip.width() / cols.len() as f32;
+        for (k, col) in cols.iter().enumerate() {
+            let seg = egui::Rect::from_min_size(strip.min + egui::vec2(k as f32 * w, 0.0), egui::vec2(w.max(1.0), strip.height()));
+            p.rect_filled(seg, 0.0, *col);
+        }
     }
 }

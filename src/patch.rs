@@ -4,7 +4,6 @@ use crate::theme::{self, caption, tile};
 use crate::{App, short};
 use eframe::egui::{self, Color32, RichText};
 use lichtpult::engine::{Action, Engine};
-use lichtpult::fixture::Attr;
 
 impl App {
     pub fn patch(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
@@ -147,13 +146,13 @@ impl App {
             let f = &e.show.fixtures[i];
             let bad = o.len() > 1;
             let hue = (f.id as f32 * 0.381966) % 1.0;
-            let fill = if bad { theme::DANGER } else { Color32::from(egui::ecolor::Hsva::new(hue, 0.5, 0.62, 1.0)) };
+            let fill = if bad { theme::DANGER } else { Color32::from(egui::ecolor::Hsva::new(hue, 0.6, 0.55, 1.0)) };
             p.rect_filled(r, 2.0, fill);
             if e.selection.contains(&f.id) {
                 p.rect_stroke(r, 2.0, egui::Stroke::new(1.5, Color32::WHITE), egui::StrokeKind::Inside);
             }
             if f.universe == uni && e.show.range(f).start as usize == n + 1 {
-                p.text(r.left_center() + egui::vec2(3.0, 0.0), egui::Align2::LEFT_CENTER, f.id.to_string(), egui::FontId::proportional(11.0), Color32::BLACK);
+                p.text(r.left_center() + egui::vec2(3.0, 0.0), egui::Align2::LEFT_CENTER, f.id.to_string(), egui::FontId::proportional(11.0), Color32::WHITE);
             }
         }
         if let Some(n) = hover.filter(|n| *n < 512) {

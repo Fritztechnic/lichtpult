@@ -13,12 +13,12 @@ fn fixture_tile(ui: &mut egui::Ui, e: &Engine, f: &Fixture, selected: bool, bad:
     let fill = if selected {
         accent.gamma_multiply(0.16)
     } else if resp.hovered() {
-        Color32::from_rgb(38, 44, 58)
+        theme::HOVER
     } else {
         theme::RAISED
     };
     let line = if bad { theme::DANGER } else if selected { accent } else { theme::LINE };
-    p.rect(rect, 7.0, fill, egui::Stroke::new(if selected || bad { 1.5 } else { 1.0 }, line), egui::StrokeKind::Inside);
+    p.rect(rect, 4.0, fill, egui::Stroke::new(if selected || bad { 1.5 } else { 1.0 }, line), egui::StrokeKind::Inside);
     p.text(rect.left_top() + egui::vec2(8.0, 6.0), egui::Align2::LEFT_TOP, f.id.to_string(), egui::FontId::proportional(14.0), if selected { accent } else { theme::TEXT });
     p.text(rect.left_top() + egui::vec2(8.0, 25.0), egui::Align2::LEFT_TOP, short(&f.name, 13), egui::FontId::proportional(10.5), theme::MUTED);
 
@@ -48,7 +48,7 @@ fn fixture_tile(ui: &mut egui::Ui, e: &Engine, f: &Fixture, selected: bool, bad:
 fn xy_pad(ui: &mut egui::Ui, x: u8, y: u8, tint: Color32) -> Option<(u8, u8)> {
     let (rect, r) = ui.allocate_exact_size(egui::vec2(150.0, 150.0), egui::Sense::click_and_drag());
     let p = ui.painter();
-    p.rect(rect, 8.0, Color32::from_rgb(10, 12, 16), egui::Stroke::new(1.0, theme::LINE), egui::StrokeKind::Inside);
+    p.rect(rect, 4.0, Color32::from_rgb(14, 14, 14), egui::Stroke::new(1.0, theme::LINE), egui::StrokeKind::Inside);
     p.line_segment([rect.center_top(), rect.center_bottom()], egui::Stroke::new(1.0, theme::LINE));
     p.line_segment([rect.left_center(), rect.right_center()], egui::Stroke::new(1.0, theme::LINE));
     let pos = egui::pos2(rect.left() + rect.width() * x as f32 / 255.0, rect.top() + rect.height() * y as f32 / 255.0);
@@ -143,6 +143,7 @@ impl App {
         let sel: Vec<&Fixture> = e.show.fixtures.iter().filter(|f| e.selection.contains(&f.id)).collect();
         ui.horizontal(|ui| {
             ui.label(RichText::new("Programmer").heading().strong());
+            theme::info(ui, "Programmer", "Hier stellst du die gewählten Fixtures manuell ein. Helle Regler sind deine Werte, gedimmte kommen aus einer laufenden Szene. Mit dem Pfeil rechts neben einem Regler gibst du den Wert wieder frei. „Als Szene speichern“ hält den Look fest; abrufen kannst du ihn im Tab „Szenen“.");
             if sel.is_empty() {
                 hint(ui, "keine Fixtures ausgewählt");
             } else {
@@ -169,7 +170,6 @@ impl App {
                 ui.label(RichText::new("Fixtures links auswählen").size(20.0).color(theme::MUTED));
                 ui.add_space(4.0);
                 ui.label(RichText::new("Dann stellst du hier Helligkeit, Farbe und Bewegung ein.").color(theme::MUTED));
-                ui.label(RichText::new("Mit „Als Szene speichern“ hältst du den Look fest und rufst ihn im Tab „Szenen“ wieder ab.").color(theme::MUTED));
                 ui.add_space(10.0);
                 if ui.button("Alle Fixtures auswählen").clicked() {
                     acts.push(Action::SelectAll);
@@ -185,22 +185,13 @@ impl App {
                 cards.push((kind, attrs));
             }
         }
-        let width_of = |kind: Kind, attrs: &[Attr]| {
-            let mut w = attrs.len() as f32 * 64.0 + 32.0;
-            if kind == Kind::Color && attrs.iter().any(|a| matches!(a, Attr::Red | Attr::Green | Attr::Blue)) {
-                w = w.max(420.0);
-            }
-            if kind == Kind::Position && attrs.contains(&Attr::Pan) && attrs.contains(&Attr::Tilt) {
-                w += 170.0;
-            }
-            w
-        };
+        const CARD_W: f32 = 420.0;
         // Karten zeilenweise packen, damit nichts überlappt.
         let avail = ui.available_width();
         let mut rows: Vec<Vec<usize>> = vec![Vec::new()];
         let mut used = 0.0;
-        for (i, (k, a)) in cards.iter().enumerate() {
-            let w = width_of(*k, a) + 16.0;
+        for i in 0..cards.len() {
+            let w = CARD_W + 34.0;
             if used + w > avail && used > 0.0 {
                 rows.push(Vec::new());
                 used = 0.0;
@@ -215,8 +206,9 @@ impl App {
                     for i in row {
                         let (kind, attrs) = &cards[i];
                         let kind = *kind;
-                        egui::Frame::new().fill(theme::PANEL).stroke(egui::Stroke::new(1.0, theme::LINE)).corner_radius(8).inner_margin(16).show(ui, |ui| {
+                        egui::Frame::new().fill(theme::PANEL).stroke(egui::Stroke::new(1.0, theme::LINE)).corner_radius(4).inner_margin(16).show(ui, |ui| {
                             ui.vertical(|ui| {
+                                ui.set_width(CARD_W);
                                 caption(ui, kind.name());
                                 let get = |a: Attr| -> (u8, bool) {
                                     let vals: Vec<(u8, bool)> = sel.iter().filter(|f| e.show.has(f, a)).map(|f| e.value_of(&play, f.id, a)).collect();
@@ -241,33 +233,29 @@ impl App {
                                                 acts.push(Action::SetAttr(a, v));
                                             }
                                         }
-                                        hint(ui, "Eigene Farbe wählen");
+                                        ui.label(RichText::new("Eigene Farbe").color(theme::MUTED));
                                     });
                                 }
-                                ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing.x = 8.0;
-                                    for a in attrs {
-                                        let (value, set) = get(*a);
-                                        match fader(ui, &short(a.name(), 8), value, theme::attr_tint(*a, accent), set) {
-                                            Fader::Set(v) => acts.push(Action::SetAttr(*a, v)),
-                                            Fader::Reset => acts.push(Action::ReleaseAttr(*a)),
-                                            Fader::None => {}
-                                        }
+                                for a in attrs {
+                                    let (value, set) = get(*a);
+                                    match fader(ui, &short(a.name(), 10), value, theme::attr_tint(*a, accent), set) {
+                                        Fader::Set(v) => acts.push(Action::SetAttr(*a, v)),
+                                        Fader::Reset => acts.push(Action::ReleaseAttr(*a)),
+                                        Fader::None => {}
                                     }
-                                    if kind == Kind::Position && attrs.contains(&Attr::Pan) && attrs.contains(&Attr::Tilt) {
-                                        if let Some((x, y)) = xy_pad(ui, get(Attr::Pan).0, get(Attr::Tilt).0, accent) {
-                                            acts.push(Action::SetAttr(Attr::Pan, x));
-                                            acts.push(Action::SetAttr(Attr::Tilt, y));
-                                        }
+                                }
+                                if kind == Kind::Position && attrs.contains(&Attr::Pan) && attrs.contains(&Attr::Tilt) {
+                                    if let Some((x, y)) = xy_pad(ui, get(Attr::Pan).0, get(Attr::Tilt).0, accent) {
+                                        acts.push(Action::SetAttr(Attr::Pan, x));
+                                        acts.push(Action::SetAttr(Attr::Tilt, y));
                                     }
-                                });
+                                }
                             });
                         });
                     }
                 });
                 ui.add_space(8.0);
             }
-            hint(ui, "Regler ziehen · Doppelklick auf einen Regler gibt den Wert wieder frei · hell = manuell, gedimmt = aus einer Szene");
         });
     }
 
@@ -277,7 +265,7 @@ impl App {
         let has_sel = !e.selection.is_empty();
         egui::ScrollArea::vertical().id_salt("library").show(ui, |ui| {
             ui.set_width(ui.available_width());
-            section(ui, "Paletten", "Eine Palette speichert eine Einstellung (z. B. die Farbe „Rot“ oder eine Position). Ein Klick wendet sie auf die aktuelle Auswahl an.");
+            section(ui, "Paletten", "Eine Palette speichert eine Einstellung (z. B. die Farbe „Rot“ oder eine Position). Ein Klick wendet sie auf die aktuelle Auswahl an. So legst du eine an: Fixtures wählen, Wert einstellen, „Speichern“. Rechtsklick = umbenennen oder löschen.");
             ui.horizontal_wrapped(|ui| {
                 for k in Kind::ALL {
                     if tile(ui, k.name(), self.pal_kind == k, accent).clicked() {
@@ -316,11 +304,10 @@ impl App {
                     acts.push(Action::RecordPalette(self.pal_kind));
                 }
             });
-            hint(ui, "So geht’s: Fixtures wählen → Wert einstellen → „Speichern“. Rechtsklick = umbenennen/löschen.");
             ui.add_space(10.0);
             ui.separator();
 
-            section(ui, "Effekte", "Effekte bewegen Werte automatisch: pulsierende Helligkeit, Lauflicht, Regenbogen oder kreisende Bewegung. Sie laufen auf den gewählten Fixtures.");
+            section(ui, "Effekte", "Effekte bewegen Werte automatisch: pulsierende Helligkeit, Lauflicht, Regenbogen oder kreisende Bewegung. Sie laufen auf den gewählten Fixtures – wähle diese zuerst aus.");
             ui.horizontal_wrapped(|ui| {
                 for (name, t, s) in [
                     ("Pulsieren", Target::Intensity, Shape::Sine),
@@ -333,14 +320,11 @@ impl App {
                     }
                 }
             });
-            if !has_sel {
-                hint(ui, "Zuerst Fixtures auswählen, dann einen Effekt wählen.");
-            }
             for (i, fx) in e.show.effects.iter().enumerate() {
                 let mut n = fx.clone();
                 let mut changed = false;
                 ui.add_space(4.0);
-                egui::Frame::new().fill(theme::RAISED).corner_radius(8).inner_margin(8).show(ui, |ui| {
+                egui::Frame::new().fill(theme::RAISED).corner_radius(4).inner_margin(8).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         if icon_btn(ui, if fx.running { "stop" } else { "play" }, "Starten/Stoppen").clicked() {
                             acts.push(Action::ToggleEffect(i));

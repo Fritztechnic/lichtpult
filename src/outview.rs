@@ -1,7 +1,7 @@
 //! Ausgabe: Netzwerk, MIDI-Zuordnung und DMX-Monitor.
 
 use crate::App;
-use crate::theme::{self, card, hint, pill, tile};
+use crate::theme::{self, card_info, hint, pill, tile};
 use eframe::egui::{self, Color32, RichText};
 use lichtpult::engine::Engine;
 use lichtpult::midi::{Target, source_name, target_name};
@@ -10,7 +10,10 @@ impl App {
     pub fn output(&mut self, ui: &mut egui::Ui, e: &Engine) {
         egui::ScrollArea::vertical().id_salt("output").show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.label(RichText::new("Ausgabe").heading().strong());
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Ausgabe").heading().strong());
+                theme::info(ui, "Ausgabe", "Hier legst du fest, wohin das DMX-Signal gesendet wird (Art-Net oder sACN), ordnest MIDI-Controller zu und siehst live, welche Werte auf jedem Kanal ausgegeben werden.");
+            });
             ui.add_space(6.0);
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = 14.0;
@@ -31,7 +34,7 @@ impl App {
 
     fn dmx_monitor(&mut self, ui: &mut egui::Ui, e: &Engine) {
         let accent = self.accent();
-        card(ui, "DMX-Monitor", |ui| {
+        card_info(ui, "DMX-Monitor", "Jedes Feld ist ein DMX-Kanal (1–512) mit seinem aktuellen Wert 0–255. Je heller das Feld, desto höher der Wert. Das Universum wählst du oben.", |ui| {
             ui.horizontal_wrapped(|ui| {
                 let mut unis: Vec<u16> = e.frames.keys().copied().collect();
                 unis.sort_unstable();
@@ -47,16 +50,16 @@ impl App {
             ui.add_space(4.0);
             let empty = [0u8; 512];
             let frame = e.frames.get(&self.out_universe).unwrap_or(&empty);
-            let cell = ((ui.available_width() - 40.0) / 32.0).clamp(22.0, 40.0);
+            let cell = ((ui.available_width() - 44.0) / 32.0).clamp(22.0, 80.0);
             for (r, row) in frame.chunks(32).enumerate() {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 2.0;
-                    let (lr, _) = ui.allocate_exact_size(egui::vec2(34.0, 20.0), egui::Sense::hover());
+                    ui.spacing_mut().item_spacing = egui::vec2(2.0, 2.0);
+                    let (lr, _) = ui.allocate_exact_size(egui::vec2(34.0, 18.0), egui::Sense::hover());
                     ui.painter().text(lr.right_center(), egui::Align2::RIGHT_CENTER, (r * 32 + 1).to_string(), egui::FontId::proportional(10.0), theme::MUTED);
                     for &v in row {
-                        let (rect, _) = ui.allocate_exact_size(egui::vec2(cell - 2.0, 20.0), egui::Sense::hover());
-                        ui.painter().rect_filled(rect, 3.0, theme::RAISED);
-                        ui.painter().rect_filled(rect, 3.0, accent.gamma_multiply(v as f32 / 255.0));
+                        let (rect, _) = ui.allocate_exact_size(egui::vec2(cell - 2.0, 18.0), egui::Sense::hover());
+                        ui.painter().rect_filled(rect, 2.0, theme::RAISED);
+                        ui.painter().rect_filled(rect, 2.0, accent.gamma_multiply(v as f32 / 255.0));
                         ui.painter().text(
                             rect.center(),
                             egui::Align2::CENTER_CENTER,
@@ -76,8 +79,8 @@ impl App {
         let out = self.out.clone();
         let mut c = out.lock().unwrap().clone();
         let before = c.clone();
-        card(ui, "Netzwerk", |ui| {
-            ui.set_min_height(170.0);
+        card_info(ui, "Netzwerk", "Art-Net sendet per UDP auf Port 6454, sACN auf Port 5568. Mit Ziel-IP wird gezielt gesendet (z. B. an den ESP32-Node), ohne Ziel per Broadcast bzw. Multicast.", |ui| {
+            ui.set_min_height(190.0);
             ui.horizontal(|ui| {
                 if c.enabled {
                     pill(ui, "sendet", theme::OK);
@@ -93,14 +96,16 @@ impl App {
                     }
                 }
             });
-            ui.horizontal(|ui| {
+            egui::Grid::new("net_form").num_columns(2).spacing([12.0, 10.0]).show(ui, |ui| {
                 ui.label("Ziel-IP");
-                ui.add(egui::TextEdit::singleline(&mut c.target).hint_text("leer = Broadcast / Multicast").desired_width(200.0));
+                ui.add(egui::TextEdit::singleline(&mut c.target).hint_text("leer = Broadcast / Multicast").desired_width(f32::INFINITY));
+                ui.end_row();
+                if c.protocol != Protocol::ArtNet {
+                    ui.label("sACN-Priorität");
+                    ui.add(egui::DragValue::new(&mut c.sacn_priority).range(0..=200));
+                    ui.end_row();
+                }
             });
-            if c.protocol != Protocol::ArtNet {
-                ui.add(egui::DragValue::new(&mut c.sacn_priority).range(0..=200).prefix("sACN-Priorität "));
-            }
-            hint(ui, "Art-Net: UDP 6454 · sACN: UDP 5568. Mit Ziel-IP wird gezielt gesendet, z. B. an den ESP32-Node.");
         });
         if c.target != before.target || c.protocol != before.protocol || c.enabled != before.enabled || c.sacn_priority != before.sacn_priority {
             lichtpult::output::save(&c);
@@ -113,7 +118,8 @@ impl App {
         let accent = self.accent();
         let midi = self.midi.clone();
         let mut m = midi.lock().unwrap();
-        card(ui, "MIDI-Controller", |ui| {
+        card_info(ui, "MIDI-Controller", "Klicke bei einer Funktion auf „Lernen“ und betätige dann eine Taste oder einen Regler am Controller. Die Zuordnung wird gespeichert.", |ui| {
+            ui.set_min_height(190.0);
             ui.horizontal(|ui| {
                 if m.ports.is_empty() {
                     pill(ui, "kein Gerät", theme::MUTED);
@@ -124,7 +130,6 @@ impl App {
                     hint(ui, &format!("zuletzt: {}", source_name(s)));
                 }
             });
-            hint(ui, "„Lernen“ klicken, dann Taste oder Regler am Controller betätigen.");
             let mut rows: Vec<Target> = Vec::new();
             for (i, _) in e.show.lists.iter().enumerate() {
                 rows.extend([Target::Go(i), Target::Back(i), Target::Level(i)]);

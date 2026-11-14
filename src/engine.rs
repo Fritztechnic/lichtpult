@@ -121,6 +121,54 @@ pub struct Effect {
     pub running: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PropKind {
+    Podest,
+    Truss,
+    Lautsprecher,
+    Pult,
+    Publikum,
+    Text,
+}
+
+impl PropKind {
+    pub const ALL: [PropKind; 6] = [PropKind::Podest, PropKind::Truss, PropKind::Lautsprecher, PropKind::Pult, PropKind::Publikum, PropKind::Text];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            PropKind::Podest => "Podest",
+            PropKind::Truss => "Traverse",
+            PropKind::Lautsprecher => "Lautsprecher",
+            PropKind::Pult => "Pult",
+            PropKind::Publikum => "Publikum",
+            PropKind::Text => "Beschriftung",
+        }
+    }
+
+    /// Startgröße als Anteil der Bühne.
+    fn size(self) -> (f32, f32) {
+        match self {
+            PropKind::Podest => (0.2, 0.14),
+            PropKind::Truss => (0.5, 0.025),
+            PropKind::Lautsprecher => (0.05, 0.08),
+            PropKind::Pult => (0.1, 0.07),
+            PropKind::Publikum => (0.6, 0.12),
+            PropKind::Text => (0.14, 0.05),
+        }
+    }
+}
+
+/// Dekoration auf der Bühnenansicht (Mittelpunkt und Größe als Anteil der Bühne).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Prop {
+    pub kind: PropKind,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub label: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Show {
     pub name: String,
@@ -136,6 +184,8 @@ pub struct Show {
     pub lists: Vec<Cuelist>,
     #[serde(default)]
     pub effects: Vec<Effect>,
+    #[serde(default)]
+    pub props: Vec<Prop>,
 }
 
 impl Default for Show {
@@ -149,6 +199,7 @@ impl Default for Show {
             cues: vec![],
             lists: vec![Cuelist::new("Cuelist 1")],
             effects: vec![],
+            props: vec![],
         }
     }
 }
@@ -247,6 +298,9 @@ pub enum Action {
     RenameFixture(u32, String),
     SetPatch { id: u32, universe: u16, address: u16 },
     SetPosition(u32, f32, f32),
+    AddProp(PropKind),
+    SetProp(usize, Prop),
+    DeleteProp(usize),
     /// Neuen Effekt für die aktuelle Auswahl anlegen.
     AddEffect(Target, Shape),
     SetEffect(usize, Effect),
@@ -292,6 +346,9 @@ impl Action {
                 | RenameFixture(..)
                 | SetPatch { .. }
                 | SetPosition(..)
+                | AddProp(_)
+                | SetProp(..)
+                | DeleteProp(_)
                 | AddEffect(..)
                 | SetEffect(..)
                 | DeleteEffect(_)
@@ -656,6 +713,23 @@ impl Engine {
             Action::SetPosition(id, x, y) => {
                 if let Some(f) = self.show.fixtures.iter_mut().find(|f| f.id == id) {
                     (f.x, f.y) = (x.clamp(0.02, 0.98), y.clamp(0.02, 0.98));
+                }
+            }
+            Action::AddProp(kind) => {
+                let (w, h) = kind.size();
+                let label = if kind == PropKind::Text { "Text".to_string() } else { String::new() };
+                self.show.props.push(Prop { kind, x: 0.5, y: 0.5, w, h, label });
+            }
+            Action::SetProp(i, mut p) => {
+                if let Some(slot) = self.show.props.get_mut(i) {
+                    (p.w, p.h) = (p.w.clamp(0.01, 1.0), p.h.clamp(0.01, 1.0));
+                    (p.x, p.y) = (p.x.clamp(0.0, 1.0), p.y.clamp(0.0, 1.0));
+                    *slot = p;
+                }
+            }
+            Action::DeleteProp(i) => {
+                if i < self.show.props.len() {
+                    self.show.props.remove(i);
                 }
             }
             Action::ApplyPalette(i) => {

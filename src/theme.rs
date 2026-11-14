@@ -1,4 +1,4 @@
-use eframe::egui::{self, Color32, CornerRadius, Stroke};
+use eframe::egui::{self, Color32, CornerRadius, RichText, Stroke};
 
 pub const BG: Color32 = Color32::from_rgb(22, 22, 22);
 pub const PANEL: Color32 = Color32::from_rgb(33, 33, 33);
@@ -99,7 +99,7 @@ pub fn caption(ui: &mut egui::Ui, text: &str) {
 pub fn section(ui: &mut egui::Ui, text: &str, help: &str) {
     ui.horizontal(|ui| {
         caption(ui, text);
-        ui.label(egui::RichText::new("ⓘ").size(12.5).color(MUTED)).on_hover_text(help);
+        info(ui, text, help);
     });
 }
 
@@ -128,50 +128,26 @@ pub enum Fader {
     Reset,
 }
 
-/// Horizontaler Regler mit Beschriftung und Prozentwert.
-/// `set` = Wert kommt aus dem Programmer (hell), sonst aus der Wiedergabe (gedimmt).
-/// Doppelklick gibt den Programmer-Wert frei.
-pub fn hfader(ui: &mut egui::Ui, label: &str, value: u8, tint: Color32, set: bool) -> Fader {
-    let mut out = Fader::None;
-    let (rect, r) = ui.allocate_exact_size(egui::vec2(ui.available_width().max(220.0), 26.0), egui::Sense::click_and_drag());
-    let p = ui.painter();
-    let track = egui::Rect::from_min_max(egui::pos2(rect.left() + 72.0, rect.center().y - 4.0), egui::pos2(rect.right() - 46.0, rect.center().y + 4.0));
-    p.text(egui::pos2(rect.left(), rect.center().y), egui::Align2::LEFT_CENTER, label, egui::FontId::proportional(13.0), if set { TEXT } else { MUTED });
-    p.rect_filled(track, 4.0, Color32::from_rgb(10, 12, 16));
-    let k = value as f32 / 255.0;
-    let mut fill = track;
-    fill.set_right(track.left() + track.width() * k);
-    p.rect_filled(fill, 4.0, if set { tint } else { tint.gamma_multiply(0.35) });
-    let x = track.left() + track.width() * k;
-    p.circle(egui::pos2(x, rect.center().y), 7.0, if set { Color32::WHITE } else { Color32::from_rgb(150, 156, 170) }, egui::Stroke::NONE);
-    p.text(
-        egui::pos2(rect.right(), rect.center().y),
-        egui::Align2::RIGHT_CENTER,
-        format!("{}%", (value as u32 * 100 + 127) / 255),
-        egui::FontId::monospace(12.0),
-        if set { TEXT } else { MUTED },
-    );
-    if r.double_clicked() {
-        out = Fader::Reset;
-    } else if r.is_pointer_button_down_on() {
-        if let Some(pos) = r.interact_pointer_pos() {
-            out = Fader::Set((((pos.x - track.left()) / track.width()).clamp(0.0, 1.0) * 255.0).round() as u8);
-        }
-    }
-    out
+/// Karte mit Titel (und optionalem Info-Text) für zusammengehörige Bedienelemente.
+pub fn card<R>(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    card_info(ui, title, "", add)
 }
 
-/// Karte mit Titel für zusammengehörige Bedienelemente.
-pub fn card<R>(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+pub fn card_info<R>(ui: &mut egui::Ui, title: &str, help: &str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     egui::Frame::new()
         .fill(PANEL)
         .stroke(Stroke::new(1.0, LINE))
-        .corner_radius(10)
+        .corner_radius(4)
         .inner_margin(16)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             if !title.is_empty() {
-                caption(ui, title);
+                ui.horizontal(|ui| {
+                    caption(ui, title);
+                    if !help.is_empty() {
+                        info(ui, title, help);
+                    }
+                });
                 ui.add_space(4.0);
             }
             add(ui)
@@ -180,7 +156,7 @@ pub fn card<R>(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui) -
 }
 
 /// Lucide-Icons (ISC) als SVG, weiß gefärbt und per Tint eingefärbt.
-pub fn icon(name: &str, color: Color32, size: f32) -> egui::Image<'static> {
+fn icon_source(name: &str) -> egui::ImageSource<'static> {
     let bytes: &'static [u8] = match name {
         "undo" => include_bytes!("../assets/icons/undo-2.svg"),
         "redo" => include_bytes!("../assets/icons/redo-2.svg"),
@@ -190,9 +166,18 @@ pub fn icon(name: &str, color: Color32, size: f32) -> egui::Image<'static> {
         "stop" => include_bytes!("../assets/icons/square.svg"),
         "back" => include_bytes!("../assets/icons/skip-back.svg"),
         "plus" => include_bytes!("../assets/icons/plus.svg"),
+        "info" => include_bytes!("../assets/icons/info.svg"),
+        "trash" => include_bytes!("../assets/icons/trash.svg"),
+        "reset" => include_bytes!("../assets/icons/rotate-ccw.svg"),
+        "list" => include_bytes!("../assets/icons/list.svg"),
+        "grid" => include_bytes!("../assets/icons/layout-grid.svg"),
         _ => include_bytes!("../assets/icons/layers.svg"),
     };
-    egui::Image::from_bytes(format!("bytes://{name}.svg"), bytes).tint(color).fit_to_exact_size(egui::vec2(size, size))
+    egui::ImageSource::Bytes { uri: format!("bytes://{name}.svg").into(), bytes: bytes.into() }
+}
+
+pub fn icon(name: &str, color: Color32, size: f32) -> egui::Image<'static> {
+    egui::Image::new(icon_source(name)).tint(color).fit_to_exact_size(egui::vec2(size, size))
 }
 
 /// Quadratischer Icon-Knopf (32 px).
@@ -205,29 +190,40 @@ pub fn icon_text(name: &str, text: &str, color: Color32) -> egui::Button<'static
     egui::Button::image_and_text(icon(name, color, 16.0), egui::RichText::new(text.to_string()).color(color))
 }
 
-/// Senkrechter Fader wie am Pult: Wert oben, Beschriftung unten.
+/// Horizontaler Regler: Name, Schieber mit Prozentfeld, Freigeben-Knopf.
+/// `set` = Wert kommt aus dem Programmer (hell), sonst aus der Wiedergabe (gedimmt).
 pub fn fader(ui: &mut egui::Ui, label: &str, value: u8, tint: Color32, set: bool) -> Fader {
     let mut out = Fader::None;
-    let (rect, r) = ui.allocate_exact_size(egui::vec2(56.0, 232.0), egui::Sense::click_and_drag());
-    let p = ui.painter();
-    let track = egui::Rect::from_min_max(egui::pos2(rect.center().x - 4.0, rect.top() + 26.0), egui::pos2(rect.center().x + 4.0, rect.bottom() - 28.0));
-    let k = value as f32 / 255.0;
-    p.text(egui::pos2(rect.center().x, rect.top() + 8.0), egui::Align2::CENTER_CENTER, format!("{}", (value as u32 * 100 + 127) / 255), egui::FontId::monospace(13.0), if set { TEXT } else { MUTED });
-    p.rect_filled(track, 4.0, Color32::from_rgb(14, 14, 14));
-    let y = track.bottom() - track.height() * k;
-    let mut fill = track;
-    fill.set_top(y);
-    p.rect_filled(fill, 4.0, if set { tint } else { tint.gamma_multiply(0.35) });
-    let cap = egui::Rect::from_center_size(egui::pos2(rect.center().x, y), egui::vec2(30.0, 14.0));
-    p.rect(cap, 3.0, if set { Color32::from_rgb(235, 235, 235) } else { Color32::from_rgb(120, 120, 120) }, Stroke::new(1.0, LINE), egui::StrokeKind::Inside);
-    p.line_segment([cap.left_center() + egui::vec2(4.0, 0.0), cap.right_center() - egui::vec2(4.0, 0.0)], Stroke::new(1.5, Color32::from_rgb(40, 40, 40)));
-    p.text(egui::pos2(rect.center().x, rect.bottom() - 10.0), egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(12.5), if set { TEXT } else { MUTED });
-    if r.double_clicked() {
-        out = Fader::Reset;
-    } else if r.is_pointer_button_down_on() {
-        if let Some(pos) = r.interact_pointer_pos() {
-            out = Fader::Set((((track.bottom() - pos.y) / track.height()).clamp(0.0, 1.0) * 255.0).round() as u8);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 8.0;
+        ui.add_sized([74.0, 28.0], egui::Label::new(RichText::new(label).color(if set { TEXT } else { MUTED })).truncate());
+        let mut pct = value as f32 / 2.55;
+        ui.scope(|ui| {
+            ui.visuals_mut().selection.bg_fill = if set { tint } else { tint.gamma_multiply(0.35) };
+            ui.spacing_mut().slider_width = (ui.available_width() - 56.0 - 36.0 - 16.0).max(80.0);
+            let slider = egui::Slider::new(&mut pct, 0.0..=100.0).fixed_decimals(0).suffix("%").trailing_fill(true);
+            if ui.add(slider).changed() {
+                out = Fader::Set((pct * 2.55).round().clamp(0.0, 255.0) as u8);
+            }
+        });
+        if set {
+            if icon_btn(ui, "reset", "Freigeben (Wert aus Szene verwenden)").clicked() {
+                out = Fader::Reset;
+            }
+        } else {
+            ui.add_space(32.0);
         }
-    }
+    });
     out
+}
+
+/// Info-Symbol: erklärt beim Darüberfahren, wofür der Bereich da ist.
+pub fn info(ui: &mut egui::Ui, title: &str, text: &str) {
+    let r = ui.add(egui::Image::new(icon_source("info")).tint(MUTED).fit_to_exact_size(egui::vec2(15.0, 15.0)).sense(egui::Sense::hover()));
+    r.on_hover_ui(|ui| {
+        ui.set_max_width(300.0);
+        ui.label(RichText::new(title).strong());
+        ui.add_space(2.0);
+        ui.label(RichText::new(text).color(MUTED));
+    });
 }

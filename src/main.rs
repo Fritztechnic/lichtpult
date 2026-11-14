@@ -39,6 +39,9 @@ pub struct App {
     out: Arc<Mutex<lichtpult::OutConfig>>,
     midi: Arc<Mutex<lichtpult::midi::Midi>>,
     pal_kind: Kind,
+    scene_sel: usize,
+    scene_grid: bool,
+    prop_sel: Option<usize>,
     pending_load: Option<Show>,
     frames: u32,
     saved_json: String,
@@ -95,6 +98,9 @@ impl App {
             out,
             midi,
             pal_kind: Kind::Color,
+            scene_sel: 0,
+            scene_grid: false,
+            prop_sel: None,
             pending_load: None,
             frames: 0,
             saved_json,
@@ -416,6 +422,13 @@ impl eframe::App for App {
             egui::Panel::right("library").default_size(side_w).size_range(220.0..=480.0).frame(side).show(ui, |ui| {
                 self.pult_library(ui, &e, &mut acts);
             });
+        }
+        let inspector = egui::Frame::new().fill(theme::PANEL).inner_margin(16);
+        if self.view == View::Scenes {
+            egui::Panel::right("scene_inspector").exact_size(if narrow { 260.0 } else { 320.0 }).frame(inspector).show(ui, |ui| self.scene_inspector(ui, &e, &mut acts));
+        }
+        if self.view == View::Stage {
+            egui::Panel::right("stage_inspector").exact_size(if narrow { 260.0 } else { 300.0 }).frame(inspector).show(ui, |ui| self.stage_inspector(ui, &e, &mut acts));
         }
         if self.view == View::Patch {
             let side = egui::Frame::new().fill(theme::PANEL).inner_margin(16);
