@@ -4,6 +4,7 @@
   import Tool from './Tool.svelte'
   import Info from './Info.svelte'
   import { ATTR_COLOR, ATTR_LABEL, KIND_OF, SHAPES, TARGETS, type Kind } from './types'
+  import Undo2 from '@lucide/svelte/icons/undo-2'
   import Layers from '@lucide/svelte/icons/layers'
   import type { MenuItem } from '../store.svelte'
   import Lightbulb from '@lucide/svelte/icons/lightbulb'
@@ -27,6 +28,7 @@
   import Clapperboard from '@lucide/svelte/icons/clapperboard'
   import Film from '@lucide/svelte/icons/film'
 
+  let { part = 'all' }: { part?: 'all' | 'fc' | 'prog' | 'par' } = $props()
   const live = $derived(S.live!)
   const show = $derived(S.show!)
   const sel = $derived(new Set(live.selection))
@@ -65,6 +67,10 @@
   const groupsOf = (id: number) => show.groups.map((g, i) => ({ g, i })).filter((x) => x.g.ids.includes(id))
 
   let typeFilter = $state(-1)
+  function reselect() {
+    const ids = idsOf(S.prevSel)
+    if (ids.length) S.act([{ Select: ids[0] }, ...ids.slice(1).map((id) => ({ Toggle: id }))])
+  }
   function sameType() {
     const ref = show.fixtures.find((f) => f.id === (live.last_selected ?? live.selection[0]))
     if (!ref) return
@@ -182,6 +188,7 @@
     ['F12', 'Stop FX', () => S.act('StopEffects')],
   ]
   function fkey(e: KeyboardEvent) {
+    if (part !== 'all') return
     const i = /^F(\d+)$/.exec(e.key)
     if (i && +i[1] >= 1 && +i[1] <= 12 && !e.ctrlKey && !e.altKey) { fkeys[+i[1] - 1][2](); e.preventDefault() }
   }
@@ -195,13 +202,15 @@
 </script>
 
 <svelte:window onkeydown={fkey} onpointerup={() => (dragging = false)} />
-<div class="compose">
+<div class="compose" class:solo={part !== 'all'}>
+  {#if part === 'all' || part === 'fc'}
   <section class="win fc">
     <header>
       <Tool icon={MousePointer2} label="All" acc="var(--green)" onclick={() => S.act('SelectAll')} />
       <Tool icon={Eraser} label="None" acc="var(--red-hi)" onclick={() => S.act('ClearSelection')} />
       <Tool icon={ArrowLeftRight} label="Invert" acc="var(--blue)" onclick={() => S.act('InvertSelection')} />
       <Tool icon={Lightbulb} label="Highlight" acc="var(--yellow)" on={live.highlight} onclick={() => S.act({ Highlight: !live.highlight })} />
+      <Tool icon={Undo2} label="Reselect" acc="var(--blue)" disabled={!S.prevSel.length} onclick={reselect} title="Restore the previous selection" />
       {#if fcTab !== 'groups'}<Tool icon={ListFilter} label="Every" acc="var(--yellow)" onclick={every} />{/if}
       {#if fcTab !== 'groups'}<Tool icon={Layers} label="Same type" acc="var(--purple)" disabled={!live.selection.length} onclick={sameType} title="Select all fixtures of the same type as the last selected" />{/if}
       {#if fcTab !== 'groups'}<Tool icon={ChevronLeft} label="Last" acc="var(--blue)" onclick={() => S.act({ SelectStep: -1 })} />{/if}
@@ -244,6 +253,8 @@
     </footer>
   </section>
 
+  {/if}
+  {#if part === 'all' || part === 'prog'}
   <section class="win prog">
     <header>
       <Tool icon={Eraser} label="Clear" acc="var(--red-hi)" disabled={!progRows.length} onclick={() => S.act('ClearProgrammer')} title="Clear the programmer (Delete)" />
@@ -275,6 +286,8 @@
     </footer>
   </section>
 
+  {/if}
+  {#if part === 'all' || part === 'par'}
   <section class="win par">
     <header>
       <div class="title">Parameters <span class="dim">· {live.selection.length} selected</span>
@@ -319,6 +332,7 @@
           {#each tabAttrs as a}
             <div class="fcol" class:prog={progVal(a) !== undefined}>
               <Fader value={outVal(a)} color={ATTR_COLOR[a] ?? '#c03030'} label={ATTR_LABEL[a] ?? a} onchange={(v) => set(a, v)} ondblclick={() => S.act({ ReleaseAttr: a })} />
+              <div class="fcz"><button onclick={() => set(a, 255)}>Full</button><button onclick={() => set(a, 128)}>Center</button><button onclick={() => set(a, 0)}>Zero</button></div>
             </div>
           {/each}
           {#if parTab === 'Position' && tabAttrs.includes('Pan') && tabAttrs.includes('Tilt')}
@@ -342,13 +356,16 @@
       <button class="tab" data-k="F" style="--tc:{TC.FX}" class:on={parTab === 'FX'} onclick={() => (parTab = 'FX')}>FX<span class="cnt">{fxCount}</span></button>
     </footer>
   </section>
+  {/if}
 </div>
 
 <style>
   .compose { display: grid; height: 100%; gap: 2px; grid-template-columns: minmax(520px, 1.15fr) minmax(460px, 1fr); grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-areas: 'fc par' 'prog par'; padding: 2px; }
   .fc { grid-area: fc; } .prog { grid-area: prog; } .par { grid-area: par; }
   .selbar { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-bottom: 1px solid var(--line); font-size: 11px; }
+  .fcz { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; } .fcz button { padding: 4px 0; font-size: 11px; background: var(--btn); border: 1px solid var(--line-hi); } .fcz button:hover { background: var(--btn-hi); }
   .gd { position: absolute; bottom: 4px; width: 5px; height: 5px; border-radius: 50%; }
+  .compose.solo { display: block; padding: 0; } .compose.solo > section { height: 100%; }
   .fkeys { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; padding: 3px; }
   .fk { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 2px; background: var(--btn); border: 1px solid var(--line-hi); font-size: 10px; color: #bbb; }
   .fk b { color: var(--orange); font-size: 10px; } .fk:hover { background: var(--btn-hi); border-color: #888; }

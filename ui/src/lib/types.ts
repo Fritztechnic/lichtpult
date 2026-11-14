@@ -46,3 +46,14 @@ export const PROP_LABEL: Record<string, string> = {
   Podest: 'Riser', Truss: 'Truss', Lautsprecher: 'Speaker', Pult: 'Desk', Publikum: 'Audience', Text: 'Label',
   Vorhang: 'Curtain', Mikrofon: 'Microphone', Treppe: 'Stairs', Bildschirm: 'Screen', Rechteck: 'Rectangle',
 }
+
+export const WIN_VIEWS = [
+  { id: 'fc', title: 'Fixture Center', w: 560, h: 420 },
+  { id: 'prog', title: 'Programmer', w: 620, h: 380 },
+  { id: 'par', title: 'Parameters / Encoders', w: 640, h: 440 },
+  { id: 'presets', title: 'Presets', w: 640, h: 420 },
+  { id: 'playback', title: 'Cuelist Values', w: 760, h: 460 },
+  { id: 'plan', title: '2D Plan', w: 700, h: 460 },
+  { id: 'patch', title: 'Patch', w: 760, h: 440 },
+  { id: 'output', title: 'Output', w: 560, h: 420 },
+] as const

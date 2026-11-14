@@ -1,8 +1,14 @@
 <script lang="ts">
   import { S, type Win } from '../store.svelte'
   import Keypad from './Keypad.svelte'
+  import Compose from './Compose.svelte'
+  import Presets from './Presets.svelte'
+  import Playback from './Playback.svelte'
+  import Plan from './Plan.svelte'
+  import Patch from './Patch.svelte'
+  import Output from './Output.svelte'
   import X from '@lucide/svelte/icons/x'
-  import { SHAPES, TARGETS } from './types'
+  import { SHAPES, TARGETS, WIN_VIEWS } from './types'
 
   const show = $derived(S.show!)
   const live = $derived(S.live!)
@@ -31,6 +37,7 @@
   const title = (w: Win) => {
     switch (w.kind) {
       case 'keypad': return 'Keypad'
+      case 'view': return WIN_VIEWS[w.arg].title
       case 'cue': return `Cue ${w.arg + 1} · ${show.lists[live.active]?.cues[w.arg]?.name ?? ''}`
       case 'list': return `Cuelist ${w.arg + 1} · ${show.lists[w.arg]?.name ?? ''}`
       case 'fx': return `Effect ${w.arg + 1} · ${show.effects[w.arg]?.name ?? ''}`
@@ -42,7 +49,7 @@
   const gone = (w: Win) =>
     (w.kind === 'cue' && !show.lists[live.active]?.cues[w.arg]) || (w.kind === 'list' && !show.lists[w.arg]) || (w.kind === 'fx' && !show.effects[w.arg]) ||
     (w.kind === 'group' && !show.groups[w.arg]) || (w.kind === 'preset' && !show.palettes[w.arg]) || (w.kind === 'fixture' && !show.fixtures.some((f) => f.id === w.arg))
-  $effect(() => { for (const w of [...S.wins]) if (w.kind !== 'keypad' && gone(w)) S.closeWin(w.id) })
+  $effect(() => { for (const w of [...S.wins]) if (w.kind !== 'keypad' && w.kind !== 'view' && gone(w)) S.closeWin(w.id) })
 </script>
 
 {#each S.wins as w (w.id)}
@@ -52,9 +59,17 @@
       <span>{title(w)}</span>
       <button aria-label="Close" onpointerdown={(e) => e.stopPropagation()} onclick={() => S.closeWin(w.id)}><X size={14} /></button>
     </div>
-    <div class="fb">
+    <div class="fb" class:flush={w.kind === 'view'}>
       {#if w.kind === 'keypad'}
         <Keypad />
+      {:else if w.kind === 'view'}
+        {@const v = WIN_VIEWS[w.arg].id}
+        {#if v === 'fc' || v === 'prog' || v === 'par'}<Compose part={v} />
+        {:else if v === 'presets'}<Presets />
+        {:else if v === 'playback'}<Playback />
+        {:else if v === 'plan'}<Plan />
+        {:else if v === 'patch'}<Patch />
+        {:else}<Output />{/if}
       {:else if w.kind === 'cue'}
         {@const c = show.lists[live.active].cues[w.arg]}
         {#if c}
@@ -155,6 +170,8 @@
   .fh { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 4px 10px; background: #050505; border-bottom: 1px solid var(--line); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #aaa; cursor: move; touch-action: none; }
   .fh button { display: flex; color: #aaa; padding: 2px; } .fh button:hover { color: #fff; background: var(--red); }
   .fb { flex: 1; min-height: 0; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+  .fb.flush { padding: 0; gap: 0; overflow: hidden; }
+  .fb.flush > :global(*) { flex: 1; min-height: 0; }
   .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .wrap { flex-wrap: wrap; }
   .fb input[type='range'] { padding: 0; accent-color: var(--red-hi); }

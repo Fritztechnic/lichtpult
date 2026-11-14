@@ -14,6 +14,8 @@
   import Fader from './lib/Fader.svelte'
   import Sliders from '@lucide/svelte/icons/sliders-vertical'
   import ListVideo from '@lucide/svelte/icons/list-video'
+  import AppWindow from '@lucide/svelte/icons/app-window'
+  import { WIN_VIEWS } from './lib/types'
   import Palette from '@lucide/svelte/icons/palette'
   import Map from '@lucide/svelte/icons/map'
   import Cable from '@lucide/svelte/icons/cable'
@@ -103,6 +105,7 @@
       <div class="msg" class:err={S.error}>{S.msg}</div>
       <span class="stat">{live.selection.length ? `${live.selection.length} fixture${live.selection.length > 1 ? 's' : ''} selected` : 'No fixture or zone selected'}</span>
       <span class="spacer"></span>
+      <button class="btn sm" class:on={S.wins.some((w) => w.kind === 'view')} onclick={(e) => S.menu(e, [...WIN_VIEWS.map((v, i) => ({ label: (S.wins.some((w) => w.id === 'view:' + i) ? '✓ ' : '\u2003') + v.title, run: () => S.toggleWin('view', i) })), { sep: true }, { label: 'Close all windows', disabled: !S.wins.length, run: () => (S.wins = []) }])} aria-label="Windows"><AppWindow size={14} /> Windows</button>
       <button class="btn sm" class:on={S.wins.some((w) => w.kind === 'keypad')} onclick={() => S.toggleWin('keypad')} aria-label="Keypad"><KeyboardIcon size={14} /> Keypad</button>
       <button class="btn sm" disabled={!live.can_undo} onclick={() => S.act('Undo')} aria-label="Undo"><Undo size={14} /></button>
       <button class="btn sm" disabled={!live.can_redo} onclick={() => S.act('Redo')} aria-label="Redo"><Redo size={14} /></button>

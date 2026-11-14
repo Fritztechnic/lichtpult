@@ -1,8 +1,8 @@
 import { call } from './api'
-import type { Live, Show, FixtureType } from './lib/types'
+import { WIN_VIEWS, type Live, type Show, type FixtureType } from './lib/types'
 
 export type MenuItem = { label?: string; run?: () => unknown; danger?: boolean; disabled?: boolean; sep?: boolean }
-export type Win = { id: string; kind: 'keypad' | 'cue' | 'list' | 'fx' | 'group' | 'preset' | 'fixture'; arg: number; x: number; y: number; w: number; h: number; z: number }
+export type Win = { id: string; kind: 'keypad' | 'view' | 'cue' | 'list' | 'fx' | 'group' | 'preset' | 'fixture'; arg: number; x: number; y: number; w: number; h: number; z: number }
 
 class Store {
   live = $state<Live | null>(null)
@@ -17,6 +17,7 @@ class Store {
   cmdText = $state('')
   ctx = $state<{ x: number; y: number; items: MenuItem[] } | null>(null)
   wins = $state<Win[]>([])
+  prevSel: number[] = []
   private z = 10
   dialog = $state<{ title: string; value: string; resolve: (v: string | null) => void } | null>(null)
   private busy = false
@@ -34,6 +35,8 @@ class Store {
             this.show = s.show
             this.library = s.library
           }
+          const prev = this.live?.selection
+          if (prev?.length && l.selection.join() !== prev.join()) this.prevSel = prev
           this.live = l
         } catch (e) {
           this.say(String(e), true)
@@ -86,7 +89,8 @@ class Store {
     const ex = this.wins.find((w) => w.id === id)
     if (ex) { ex.z = ++this.z; return }
     const n = this.wins.length
-    const big = kind === 'keypad' ? { w: 260, h: 430 } : { w: 340, h: 300 }
+    const v = kind === 'view' ? WIN_VIEWS[arg] : null
+    const big = kind === 'keypad' ? { w: 260, h: 430 } : v ? { w: v.w, h: v.h } : { w: 340, h: 300 }
     this.wins.push({ id, kind, arg, x: 380 + n * 28, y: 90 + n * 28, ...big, z: ++this.z })
   }
   toggleWin(kind: Win['kind'], arg = 0) {
