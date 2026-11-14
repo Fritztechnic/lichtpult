@@ -13,7 +13,9 @@ class Store {
   live = $state<Live | null>(null)
   show = $state<Show | null>(null)
   library = $state<FixtureType[]>([])
-  view = $state('compose')
+  // Ansicht und offene Fenster überleben einen Neustart (localStorage, siehe `persist`)
+  private saved = JSON.parse(localStorage.getItem('lichtpult.session') ?? '{}')
+  view = $state<string>(this.saved.view ?? 'compose')
   page = $state(0)
   msg = $state('')
   error = $state(false)
@@ -25,7 +27,12 @@ class Store {
   layout = $state<Layout>({ ...DEFAULT_LAYOUT, ...JSON.parse(localStorage.getItem('lichtpult.layout') ?? '{}') })
   saveLayout() { localStorage.setItem('lichtpult.layout', JSON.stringify(this.layout)) }
   resetLayout() { this.layout = { ...DEFAULT_LAYOUT }; this.saveLayout() }
-  wins = $state<Win[]>([])
+  wins = $state<Win[]>(this.saved.wins ?? [])
+  private lastSaved = ''
+  persist() {
+    const s = JSON.stringify({ view: this.view, wins: this.wins })
+    if (s !== this.lastSaved) { this.lastSaved = s; localStorage.setItem('lichtpult.session', s) }
+  }
   prevSel: number[] = []
   private z = 10
   dialog = $state<{ title: string; value: string; resolve: (v: string | null) => void } | null>(null)
@@ -35,6 +42,7 @@ class Store {
   // Polling starten; die Show wird nur neu geladen, wenn sich `rev` ändert
   start() {
     const tick = async () => {
+      this.persist()
       if (!this.busy) {
         this.busy = true
         try {

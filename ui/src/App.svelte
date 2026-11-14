@@ -75,7 +75,15 @@
     if (e.ctrlKey && e.key === 'z') { S.act('Undo'); e.preventDefault(); return }
     if (e.ctrlKey && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { S.act('Redo'); e.preventDefault(); return }
     if (e.ctrlKey && e.key === 'p') { S.act({ SetBlind: !live?.blind }); e.preventDefault(); return }
+    if (e.ctrlKey && /^[1-7]$/.test(e.key)) { S.view = views[+e.key - 1][0]; e.preventDefault(); return }
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
+    if (e.ctrlKey && e.key === 'a') { S.act('SelectAll'); e.preventDefault(); return }
+    if (e.key === 'Escape') {
+      if (S.ctx) S.ctx = null
+      else if (S.wins.length) S.closeWin(S.wins.reduce((a, b) => (b.z > a.z ? b : a)).id)
+      else S.act('ClearSelection')
+      return
+    }
     const m: Record<string, () => unknown> = {
       ' ': () => S.play('Go', act), Tab: () => S.play('Back', act), Home: () => S.act({ Snap: act }), End: () => S.play('ReleaseList', act),
       PageDown: () => S.act({ SelectStep: 1 }), PageUp: () => S.act({ SelectStep: -1 }), Delete: () => S.act('ClearProgrammer'),
