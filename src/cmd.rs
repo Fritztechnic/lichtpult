@@ -24,7 +24,7 @@ fn tokens(line: &str) -> Vec<String> {
         }
     }
     flush(&mut cur, &mut out);
-    out
+    out.into_iter().map(|t| if t == "at" { "@".into() } else { t }).collect()
 }
 
 fn attr_of(word: &str) -> Option<Attr> {

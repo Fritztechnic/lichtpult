@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Lichtpult",
+  "version": "0.2.0",
+  "identifier": "de.fritztechnic.lichtpult",
+  "build": {
+    "beforeDevCommand": "npm --prefix ../ui run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm --prefix ../ui run build",
+    "frontendDist": "../ui/dist"
+  },
+  "app": {
+    "windows": [
+      { "title": "Lichtpult", "width": 1600, "height": 900, "minWidth": 1100, "minHeight": 650 }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": true, "targets": "all", "icon": ["icons/icon.png"] }
+}

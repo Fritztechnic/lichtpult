@@ -1,0 +1,11 @@
+[package]
+name = "lichtpult-app"
+version = "0.2.0"
+edition = "2024"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+lichtpult = { path = ".." }
+tauri = { version = "2", features = [] }

@@ -1,0 +1,247 @@
+<script lang="ts">
+  import { onMount } from 'svelte'
+  import { S } from './store.svelte'
+  import { call } from './api'
+  import Compose from './lib/Compose.svelte'
+  import Playback from './lib/Playback.svelte'
+  import Plan from './lib/Plan.svelte'
+  import Patch from './lib/Patch.svelte'
+  import Output from './lib/Output.svelte'
+  import Fader from './lib/Fader.svelte'
+  import Sliders from '@lucide/svelte/icons/sliders-vertical'
+  import ListVideo from '@lucide/svelte/icons/list-video'
+  import Map from '@lucide/svelte/icons/map'
+  import Cable from '@lucide/svelte/icons/cable'
+  import Monitor from '@lucide/svelte/icons/monitor'
+  import Settings from '@lucide/svelte/icons/settings'
+  import Undo from '@lucide/svelte/icons/undo-2'
+  import Redo from '@lucide/svelte/icons/redo-2'
+  import Play from '@lucide/svelte/icons/play'
+  import SkipBack from '@lucide/svelte/icons/skip-back'
+  import Square from '@lucide/svelte/icons/square'
+  import Zap from '@lucide/svelte/icons/zap'
+  import ChevronUp from '@lucide/svelte/icons/chevron-up'
+  import ChevronDown from '@lucide/svelte/icons/chevron-down'
+  import Power from '@lucide/svelte/icons/power'
+  import Terminal from '@lucide/svelte/icons/terminal'
+
+  onMount(() => S.start())
+
+  let cmd = $state('')
+  let cmdEl = $state<HTMLInputElement>()!
+  let hi = $state(-1)
+  let shows = $state<string[]>([])
+  let newName = $state('')
+
+  const views = [
+    ['compose', 'Compose', Sliders],
+    ['playback', 'Playback', ListVideo],
+    ['plan', 'Stage', Map],
+    ['patch', 'Patch', Cable],
+    ['output', 'Output', Monitor],
+  ] as const
+
+  const live = $derived(S.live)
+  const show = $derived(S.show)
+  const act = $derived(live?.active ?? 0)
+
+  async function runCmd() {
+    if (!cmd.trim()) return
+    await S.cmd(cmd.trim())
+    cmd = ''
+    hi = -1
+  }
+  function hist(e: KeyboardEvent) {
+    if (e.key === 'ArrowUp') { hi = Math.min(S.history.length - 1, hi + 1); cmd = S.history[hi] ?? cmd; e.preventDefault() }
+    if (e.key === 'ArrowDown') { hi = Math.max(-1, hi - 1); cmd = hi < 0 ? '' : S.history[hi]; e.preventDefault() }
+  }
+  function keys(e: KeyboardEvent) {
+    if (S.dialog) return
+    const tag = (e.target as HTMLElement).tagName
+    if (e.ctrlKey && e.key === 'l') { cmdEl.focus(); e.preventDefault(); return }
+    if (e.ctrlKey && e.key === 'z') { S.act('Undo'); e.preventDefault(); return }
+    if (e.ctrlKey && (e.key === 'y' || (e.shiftKey && e.key === 'Z'))) { S.act('Redo'); e.preventDefault(); return }
+    if (e.ctrlKey && e.key === 'p') { S.act({ SetBlind: !live?.blind }); e.preventDefault(); return }
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return
+    const m: Record<string, () => unknown> = {
+      ' ': () => S.play('Go', act), Tab: () => S.play('Back', act), Home: () => S.act({ Snap: act }), End: () => S.play('ReleaseList', act),
+      PageDown: () => S.act({ SelectStep: 1 }), PageUp: () => S.act({ SelectStep: -1 }), Delete: () => S.act('ClearProgrammer'),
+    }
+    if (m[e.key]) { m[e.key](); e.preventDefault() }
+  }
+
+  async function openSettings() {
+    shows = await call('show_list')
+    S.settings = true
+  }
+  async function dlgOk(v: string | null) {
+    S.dialog?.resolve(v)
+    S.dialog = null
+  }
+  const cell = (i: number) => S.page * 10 + i
+  const lists = $derived(show?.lists ?? [])
+  const tcolor = (i: number) => (lists[i]?.chase ? 'var(--blue)' : 'var(--red)')
+</script>
+
+<svelte:window onkeydown={keys} />
+
+{#if !live || !show}
+  <div class="boot">Connecting to engine…{#if S.msg}<div class="dim">{S.msg}</div>{/if}</div>
+{:else}
+  <div class="app">
+    <div class="top">
+      <button class="logo" onclick={openSettings}><Zap size={16} /> LICHTPULT</button>
+      <span class="dim show">{show.name}</span>
+      <span class="spacer"></span>
+      <div class="msg" class:err={S.error}>{S.msg}</div>
+      <span class="spacer"></span>
+      <button class="btn sm" disabled={!live.can_undo} onclick={() => S.act('Undo')} aria-label="Undo"><Undo size={14} /></button>
+      <button class="btn sm" disabled={!live.can_redo} onclick={() => S.act('Redo')} aria-label="Redo"><Redo size={14} /></button>
+      <span class="gm">
+        <span class="dim">Grand Master</span>
+        <input type="range" min="0" max="255" value={live.master} oninput={(e) => S.act({ Master: +e.currentTarget.value })} />
+        <span class="num mono" style="width:38px">{Math.round((live.master / 255) * 100)}%</span>
+      </span>
+      <button class="btn sm" class:on={live.blackout} onclick={() => S.act({ Blackout: !live.blackout })}><Power size={14} /> Blackout</button>
+    </div>
+
+    <div class="main">
+      <div class="view">
+        {#if S.view === 'compose'}<Compose />
+        {:else if S.view === 'playback'}<Playback />
+        {:else if S.view === 'plan'}<Plan />
+        {:else if S.view === 'patch'}<Patch />
+        {:else}<Output />{/if}
+      </div>
+      <nav class="side">
+        {#each views as [id, name, Icon]}
+          <button class="sbtn" class:on={S.view === id} onclick={() => (S.view = id)}><Icon size={24} strokeWidth={1.6} /><span>{name}</span></button>
+        {/each}
+        <span class="spacer"></span>
+        <button class="sbtn" onclick={openSettings}><Settings size={24} strokeWidth={1.6} /><span>Settings</span></button>
+      </nav>
+    </div>
+
+    <div class="bank">
+      <div class="maingo">
+        <div class="mg">
+          <button class="gob" onclick={() => S.play('Back', act)}><SkipBack size={20} /><span>Back</span></button>
+          <button class="gob go" onclick={() => S.play('Go', act)}><Play size={26} /><span>GO</span></button>
+        </div>
+        <div class="mg">
+          <button class="gob" onclick={() => S.act({ Snap: act })}><Zap size={18} /><span>Snap</span></button>
+          <button class="gob" onclick={() => S.play('ReleaseList', act)}><Square size={18} /><span>Release</span></button>
+        </div>
+        <div class="pager">
+          <button class="btn sm" disabled={S.page <= 0} onclick={() => S.page--} aria-label="Page up"><ChevronUp size={14} /></button>
+          <span class="mono">Page {S.page + 1}</span>
+          <button class="btn sm" disabled={(S.page + 1) * 10 >= lists.length + 1} onclick={() => S.page++} aria-label="Page down"><ChevronDown size={14} /></button>
+        </div>
+      </div>
+      <div class="cells">
+        {#each Array(10) as _, i}
+          {@const li = cell(i)}
+          {@const c = lists[li]}
+          {#if c}
+            {@const p = live.players[li]}
+            <div class="bcell" class:act={li === act}>
+              <button class="bhead" onclick={() => S.act({ SelectList: li })} style="--tc:{tcolor(li)}">
+                <span class="n">{li + 1}</span><span class="nm">{c.name}</span>
+              </button>
+              <div class="bf"><Fader value={p?.level ?? 0} color={c.chase ? '#2a64c8' : '#c03030'} onchange={(v) => S.act({ SetLevel: [li, v] })} /></div>
+              <div class="bb">
+                <button class="btn sm" aria-label="Go" onclick={() => S.play('Go', li)}><Play size={14} /></button>
+                <button class="btn sm" aria-label="Release" onclick={() => S.play('ReleaseList', li)}><Square size={14} /></button>
+              </div>
+              <div class="bfoot mono">#{li + 1} <span class="num">{p?.cue != null ? `${p.cue + 1}/${c.cues.length}` : `–/${c.cues.length}`}</span></div>
+            </div>
+          {:else}
+            <button class="bcell empty" onclick={() => S.act('AddList')} title="Add cuelist"><span class="n">{li + 1}</span></button>
+          {/if}
+        {/each}
+      </div>
+    </div>
+
+    <div class="cmdl">
+      <Terminal size={16} />
+      <span class="mode" class:blind={live.blind}>{live.blind ? 'BLIND' : 'LIVE'}</span>
+      <input bind:this={cmdEl} bind:value={cmd} placeholder="Command line, e.g. 1 thru 8 at 50  ·  Ctrl+L" onkeydown={(e) => (e.key === 'Enter' ? runCmd() : hist(e))} />
+      <span class="dim sel">{live.selection.length} sel · cue {live.players[act]?.cue != null ? live.players[act].cue! + 1 : '–'}</span>
+    </div>
+  </div>
+
+  {#if S.dialog}
+    {@const d = S.dialog}
+    <div class="modal-bg" role="presentation">
+      <form class="modal" style="min-width:360px" onsubmit={(e) => { e.preventDefault(); dlgOk((e.currentTarget.elements.namedItem('v') as HTMLInputElement).value) }}>
+        <h2>{d.title}</h2>
+        <div class="in">
+          <!-- svelte-ignore a11y_autofocus -->
+          <input name="v" value={d.value} autofocus />
+          <div class="row"><span class="spacer"></span><button type="button" class="btn" onclick={() => dlgOk(null)}>Cancel</button><button class="btn on">OK</button></div>
+        </div>
+      </form>
+    </div>
+  {/if}
+
+  {#if S.settings}
+    <div class="modal-bg" role="presentation" onclick={(e) => e.target === e.currentTarget && (S.settings = false)}>
+      <div class="modal">
+        <h2>Show &amp; Settings<span class="spacer"></span><button class="btn sm" onclick={() => (S.settings = false)}>Close</button></h2>
+        <div class="in">
+          <div class="dim">Current show: <b style="color:#fff">{show.name}</b> — changes are autosaved.</div>
+          <div class="row">
+            <input bind:value={newName} placeholder="Show name" style="flex:1" />
+            <button class="btn" disabled={!newName.trim()} onclick={async () => { await call('show_save_as', newName.trim()); S.say('Saved ' + newName); shows = await call('show_list') }}>Save as</button>
+            <button class="btn" disabled={!newName.trim()} onclick={async () => { await call('show_new', newName.trim()); S.settings = false }}>New show</button>
+          </div>
+          <div class="dim">Saved shows</div>
+          <div class="padgrid" style="grid-template-columns:repeat(3,1fr)">
+            {#each shows as n}<button class="btn" onclick={async () => { await call('show_load', n); S.settings = false; S.say('Loaded ' + n) }}>{n}</button>{/each}
+          </div>
+          {#if !shows.length}<div class="dim">No saved shows yet.</div>{/if}
+          <div class="dim" style="font-size:11px">Shortcuts: Space Go · Tab Back · Home Snap · End Release · Delete Clear · PgUp/PgDn prev/next fixture · Ctrl+P Blind · Ctrl+Z/Y Undo/Redo · Ctrl+L command line</div>
+        </div>
+      </div>
+    </div>
+  {/if}
+{/if}
+
+<style>
+  .boot { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--dim); }
+  .app { display: grid; grid-template-rows: 36px minmax(0, 1fr) 196px 34px; height: 100%; }
+  .top { display: flex; align-items: center; gap: 8px; padding: 0 8px; background: #0b0b0b; border-bottom: 1px solid var(--line); }
+  .logo { display: inline-flex; align-items: center; gap: 6px; background: var(--btn-red); border: 1px solid #e04848; padding: 5px 12px; font-weight: 700; letter-spacing: .12em; font-size: 12px; }
+  .show { font-size: 12px; }
+  .msg { font-size: 12px; color: var(--orange); min-width: 200px; text-align: center; } .msg.err { color: #ff6060; }
+  .gm { display: inline-flex; align-items: center; gap: 6px; margin: 0 8px; }
+  .gm input[type='range'] { width: 130px; accent-color: var(--red-hi); padding: 0; }
+  .main { display: grid; grid-template-columns: minmax(0, 1fr) 74px; min-height: 0; overflow: hidden; }
+  .view { min-width: 0; min-height: 0; overflow: hidden; height: 100%; }
+  .side { display: flex; flex-direction: column; gap: 3px; padding: 3px; border-left: 1px solid var(--line); background: #0b0b0b; }
+  .sbtn { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 2px; background: var(--btn); border: 1px solid #444; border-radius: 2px; font-size: 11px; }
+  .sbtn.on { background: var(--btn-red); border-color: #e04848; }
+  .bank { display: grid; grid-template-columns: 250px 1fr; border-top: 1px solid var(--line); background: #0b0b0b; min-height: 0; }
+  .maingo { display: flex; flex-direction: column; gap: 3px; padding: 3px; border-right: 1px solid var(--line); }
+  .mg { display: grid; grid-template-columns: 1fr 1.4fr; gap: 3px; flex: 1; }
+  .mg:last-of-type { grid-template-columns: 1fr 1fr; }
+  .gob { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: var(--btn); border: 1px solid #4a4a4a; font-size: 11px; font-weight: 700; }
+  .gob:hover { border-color: #888; } .gob:active { filter: brightness(1.4); }
+  .gob.go { background: var(--btn-green); border-color: #50d068; font-size: 14px; }
+  .pager { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+  .cells { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; padding: 3px; min-width: 0; }
+  .bcell { display: grid; grid-template-rows: 38px 1fr 28px 18px; gap: 3px; background: #121212; border: 1px solid #333; padding: 3px; min-width: 0; min-height: 0; }
+  .bcell.act { border-color: #e04848; }
+  .bcell.empty { background: #050505; border-color: #1c1c1c; display: block; position: relative; color: #444; }
+  .bcell.empty .n { position: absolute; left: 4px; top: 3px; font-size: 10px; }
+  .bhead { position: relative; background: linear-gradient(#2e2e2e, #1f1f1f); border: 1px solid #444; border-top: 3px solid var(--tc); overflow: hidden; }
+  .bhead .n { position: absolute; left: 3px; top: 1px; font-size: 9px; color: #999; }
+  .bhead .nm { display: block; padding: 8px 2px 0; font-size: 11px; line-height: 1.1; }
+  .bf { min-height: 0; } .bf :global(.fader) { min-width: 0; } .bf :global(.track) { min-height: 20px; }
+  .bb { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+  .bfoot { font-size: 10px; color: var(--dim); text-align: center; }
+  .cmdl { display: flex; align-items: center; gap: 8px; padding: 0 8px; background: #0b0b0b; border-top: 1px solid var(--line); }
+  .cmdl input { flex: 1; background: #000; height: 24px; }
+  .mode { font-size: 11px; font-weight: 700; padding: 2px 8px; background: var(--btn-green); border: 1px solid #50d068; } .mode.blind { background: var(--btn-red); border-color: #e04848; }
+  .sel { font-size: 11px; }
+</style>

@@ -300,7 +300,7 @@ impl Show {
 
 /// Alles, was ein Bedienelement (UI, MIDI, Pult) tun kann.
 /// Hardware-Controller werden auf diese Aktionen abgebildet.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Action {
     AddTypes(Vec<FixtureType>),
     Select(u32),
@@ -489,6 +489,8 @@ pub struct Engine {
     pub blackout: bool,
     /// Blind: Programmer wird nicht ausgegeben.
     pub blind: bool,
+    /// Zähler, der bei jeder Änderung der gespeicherten Show wächst.
+    pub rev: u64,
     /// Geparkte Werte überschreiben alles andere.
     pub parked: Values,
     pub fade_speed: f32,
@@ -534,6 +536,7 @@ impl Engine {
             master: 255,
             blackout: false,
             blind: false,
+            rev: 1,
             parked: Values::new(),
             fade_speed: 1.0,
             last_selected: None,
@@ -550,7 +553,9 @@ impl Engine {
     }
 
     pub fn load_show(&mut self, show: Show) {
+        let rev = self.rev + 1;
         *self = Engine::new(show);
+        self.rev = rev;
     }
 
     /// Aktive Cuelist.
@@ -701,6 +706,9 @@ impl Engine {
     }
 
     pub fn apply(&mut self, action: Action) {
+        if action.edits_show() || matches!(action, Action::Undo | Action::Redo) {
+            self.rev += 1;
+        }
         if action.edits_show() {
             self.snapshot(&action);
         }
