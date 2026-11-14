@@ -202,10 +202,10 @@
       <Tool icon={Eraser} label="None" acc="var(--red-hi)" onclick={() => S.act('ClearSelection')} />
       <Tool icon={ArrowLeftRight} label="Invert" acc="var(--blue)" onclick={() => S.act('InvertSelection')} />
       <Tool icon={Lightbulb} label="Highlight" acc="var(--yellow)" on={live.highlight} onclick={() => S.act({ Highlight: !live.highlight })} />
-      <Tool icon={ListFilter} label="Every" acc="var(--yellow)" onclick={every} />
-      <Tool icon={Layers} label="Same type" acc="var(--purple)" disabled={!live.selection.length} onclick={sameType} title="Select all fixtures of the same type as the last selected" />
-      <Tool icon={ChevronLeft} label="Last" acc="var(--blue)" onclick={() => S.act({ SelectStep: -1 })} />
-      <Tool icon={ChevronRight} label="Next" acc="var(--green)" onclick={() => S.act({ SelectStep: 1 })} />
+      {#if fcTab !== 'groups'}<Tool icon={ListFilter} label="Every" acc="var(--yellow)" onclick={every} />{/if}
+      {#if fcTab !== 'groups'}<Tool icon={Layers} label="Same type" acc="var(--purple)" disabled={!live.selection.length} onclick={sameType} title="Select all fixtures of the same type as the last selected" />{/if}
+      {#if fcTab !== 'groups'}<Tool icon={ChevronLeft} label="Last" acc="var(--blue)" onclick={() => S.act({ SelectStep: -1 })} />{/if}
+      {#if fcTab !== 'groups'}<Tool icon={ChevronRight} label="Next" acc="var(--green)" onclick={() => S.act({ SelectStep: 1 })} />{/if}
       <div class="title">Fixture Center <Info text="Click a fixture to select it, drag across pads to add more, Ctrl+click toggles, Shift+click selects a range. Groups store a selection: click selects, Ctrl+click adds, Shift+click removes its fixtures. The red pad is the last selected fixture." /></div>
       {#if fcTab === 'groups'}
         <Tool icon={Save} label="Record" acc="var(--red-hi)" disabled={!live.selection.length} onclick={recGroup} title="Record the selection as a new group" />
