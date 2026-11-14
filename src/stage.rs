@@ -28,11 +28,13 @@ fn prop_rect(p: &Prop, stage: Rect) -> Rect {
 }
 
 fn draw_prop(painter: &egui::Painter, p: &Prop, r: Rect, selected: bool, accent: Color32) {
-    let line = Stroke::new(1.0, if selected { accent } else { theme::MUTED });
+    let tint = p.color.map(|c| Color32::from_rgb(c[0], c[1], c[2]));
+    let line = Stroke::new(1.0, if selected { accent } else { tint.unwrap_or(theme::MUTED) });
+    let body = tint.map_or(theme::RAISED, |t| t.gamma_multiply(0.3));
     let font = egui::FontId::proportional(12.0);
     match p.kind {
         PropKind::Podest => {
-            painter.rect(r, 2.0, theme::RAISED, line, egui::StrokeKind::Inside);
+            painter.rect(r, 2.0, body, line, egui::StrokeKind::Inside);
         }
         PropKind::Truss => {
             painter.rect(r, 0.0, theme::PANEL, line, egui::StrokeKind::Inside);
@@ -93,7 +95,7 @@ fn draw_prop(painter: &egui::Painter, p: &Prop, r: Rect, selected: bool, accent:
             painter.rect(r, 2.0, Color32::from_rgb(8, 24, 40), Stroke::new(1.0, if selected { accent } else { Color32::from_rgb(40, 90, 140) }), egui::StrokeKind::Inside);
         }
         PropKind::Rechteck => {
-            painter.rect(r, 2.0, theme::RAISED, line, egui::StrokeKind::Inside);
+            painter.rect(r, 2.0, body, line, egui::StrokeKind::Inside);
         }
         PropKind::Text => {
             if selected {
@@ -113,7 +115,7 @@ impl App {
         let accent = self.accent();
         ui.horizontal(|ui| {
             ui.label(RichText::new("Bühne").heading().strong());
-            theme::info(ui, "Bühne", "Ordne Fixtures und Bühnenobjekte so an wie in deinem Raum. Klick = wählen (Shift = hinzufügen), ziehen = verschieben, Leerraum ziehen = Rahmen aufziehen. Ein gewähltes Objekt hat unten rechts einen Griff zum Vergrößern; Entf löscht es.");
+            theme::info(ui, "Bühne", "Ordne Fixtures und Bühnenobjekte so an wie in deinem Raum. Klick = wählen (Shift = hinzufügen), ziehen = verschieben, Leerraum ziehen = Rahmen aufziehen. Strg + Mausrad = zoomen, mittlere Maustaste ziehen = Ansicht verschieben, Strg+D = duplizieren. Ein gewähltes Objekt hat unten rechts einen Griff zum Vergrößern; Entf löscht es.");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 egui::containers::menu::MenuButton::from_button(theme::icon_text("plus", "Objekt hinzufügen", theme::TEXT)).ui(ui, |ui| {
                     for k in PropKind::ALL {
@@ -126,9 +128,62 @@ impl App {
                 });
             });
         });
-        let (rect, resp) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
-        let p = ui.painter_at(rect);
+        let sel_prop = self.prop_sel.filter(|i| *i < e.show.props.len());
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            let tool = |ui: &mut egui::Ui, icon: &str, tip: &str, on: bool, enabled: bool| {
+                ui.add_enabled(enabled, egui::Button::image(theme::icon(icon, if on { accent } else { theme::TEXT }, 16.0)).min_size(egui::vec2(34.0, 32.0)).selected(on)).on_hover_text(tip).clicked()
+            };
+            if tool(ui, "snap", "Am Raster einrasten (beim Loslassen)", self.stage_snap, true) {
+                self.stage_snap = !self.stage_snap;
+            }
+            ui.separator();
+            if tool(ui, "zoom-out", "Verkleinern", false, self.stage_zoom > 1.01) {
+                self.stage_zoom = (self.stage_zoom / 1.25).max(1.0);
+            }
+            if tool(ui, "zoom-in", "Vergrößern (auch Strg + Mausrad)", false, self.stage_zoom < 4.0) {
+                self.stage_zoom = (self.stage_zoom * 1.25).min(4.0);
+            }
+            if tool(ui, "fit", "Ansicht zurücksetzen", false, true) {
+                self.stage_zoom = 1.0;
+                self.stage_pan = egui::Vec2::ZERO;
+            }
+            ui.label(RichText::new(format!("{:.0} %", self.stage_zoom * 100.0)).color(theme::MUTED));
+            ui.separator();
+            if tool(ui, "copy", "Objekt duplizieren (Strg+D)", false, sel_prop.is_some()) {
+                acts.push(Action::DuplicateProp(sel_prop.unwrap()));
+                self.prop_sel = Some(e.show.props.len());
+            }
+            if tool(ui, "up", "Nach vorn", false, sel_prop.is_some_and(|i| i + 1 < e.show.props.len())) {
+                acts.push(Action::MoveProp(sel_prop.unwrap(), sel_prop.unwrap() + 1));
+                self.prop_sel = Some(sel_prop.unwrap() + 1);
+            }
+            if tool(ui, "down", "Nach hinten", false, sel_prop.is_some_and(|i| i > 0)) {
+                acts.push(Action::MoveProp(sel_prop.unwrap(), sel_prop.unwrap() - 1));
+                self.prop_sel = Some(sel_prop.unwrap() - 1);
+            }
+            if tool(ui, "trash", "Objekt löschen (Entf)", false, sel_prop.is_some()) {
+                acts.push(Action::DeleteProp(sel_prop.unwrap()));
+                self.prop_sel = None;
+            }
+        });
+        let (frame, resp) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
+        if resp.hovered() {
+            let (scroll, zoom_mod) = ui.input(|i| (i.smooth_scroll_delta.y, i.modifiers.command));
+            if zoom_mod && scroll != 0.0 {
+                self.stage_zoom = (self.stage_zoom * (1.0 + scroll * 0.004)).clamp(1.0, 4.0);
+            }
+        }
+        if resp.dragged_by(egui::PointerButton::Middle) {
+            self.stage_pan += resp.drag_delta();
+        }
+        let max_pan = frame.size() * (self.stage_zoom - 1.0) / 2.0;
+        self.stage_pan = self.stage_pan.clamp(-max_pan, max_pan);
+        let rect = Rect::from_center_size(frame.center() + self.stage_pan, frame.size() * self.stage_zoom);
+        let p = ui.painter_at(frame);
+        p.rect_filled(frame, 4.0, Color32::from_rgb(8, 8, 8));
         p.rect(rect, 4.0, Color32::from_rgb(14, 14, 14), Stroke::new(1.0, theme::LINE), egui::StrokeKind::Inside);
+        p.rect_stroke(frame, 4.0, Stroke::new(1.0, theme::LINE), egui::StrokeKind::Inside);
         let step = rect.width() / 24.0;
         let mut x = rect.left() + step;
         while x < rect.right() {
@@ -197,7 +252,7 @@ impl App {
         let select = |id: u32| if shift { Action::Toggle(id) } else { Action::Select(id) };
         let drag_id = egui::Id::new("stage_drag");
 
-        if resp.drag_started() {
+        if resp.drag_started_by(egui::PointerButton::Primary) {
             let drag = match pointer.map_or(Hit::Nothing, hit_at) {
                 Hit::Fixture(id) => {
                     if !e.selection.contains(&id) {
@@ -215,7 +270,7 @@ impl App {
             ui.data_mut(|d| d.insert_temp(drag_id, drag));
         }
         let drag: Option<Drag> = ui.data(|d| d.get_temp::<Option<Drag>>(drag_id)).flatten();
-        if resp.dragged() {
+        if resp.dragged_by(egui::PointerButton::Primary) {
             let d = resp.drag_delta();
             match (drag, pointer) {
                 (Some(Drag::Fixtures), _) => {
@@ -246,6 +301,24 @@ impl App {
             }
         }
         if resp.drag_stopped() {
+            if self.stage_snap {
+                let (gx, gy) = (1.0 / 24.0, rect.width() / 24.0 / rect.height());
+                let snap = |v: f32, g: f32| ((v / g).round() * g).clamp(0.0, 1.0);
+                match drag {
+                    Some(Drag::Prop(i)) => {
+                        if let Some(pr) = e.show.props.get(i) {
+                            acts.push(Action::SetProp(i, Prop { x: snap(pr.x, gx), y: snap(pr.y, gy), ..pr.clone() }));
+                        }
+                    }
+                    Some(Drag::Fixtures) => {
+                        for (i, f) in e.show.fixtures.iter().enumerate().filter(|(_, f)| e.selection.contains(&f.id)) {
+                            let (x, y) = pos(i, f);
+                            acts.push(Action::SetPosition(f.id, snap(x, gx / 2.0), snap(y, gy / 2.0)));
+                        }
+                    }
+                    _ => {}
+                }
+            }
             if let (Some(Drag::Band(a)), Some(b)) = (drag, pointer) {
                 let r = Rect::from_two_pos(a, b);
                 let ids = e.show.fixtures.iter().enumerate().filter(|(i, f)| r.contains(to_screen(pos(*i, f).0, pos(*i, f).1))).map(|(_, f)| f.id).collect();
@@ -264,6 +337,10 @@ impl App {
             }
         }
         if let Some(i) = selected_prop {
+            if !ui.ctx().egui_wants_keyboard_input() && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::D)) {
+                acts.push(Action::DuplicateProp(i));
+                self.prop_sel = Some(e.show.props.len());
+            }
             if !ui.ctx().egui_wants_keyboard_input() && ui.input(|i| i.key_pressed(egui::Key::Delete)) {
                 acts.push(Action::DeleteProp(i));
                 self.prop_sel = None;
@@ -304,6 +381,18 @@ impl App {
                     changed = true;
                 }
                 ui.end_row();
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Farbe");
+            let mut c = n.color.unwrap_or([150, 150, 150]);
+            if ui.color_edit_button_srgb(&mut c).changed() {
+                n.color = Some(c);
+                changed = true;
+            }
+            if n.color.is_some() && theme::button(ui, "Standard").clicked() {
+                n.color = None;
+                changed = true;
             }
         });
         if changed {

@@ -194,6 +194,8 @@ pub struct Prop {
     pub w: f32,
     pub h: f32,
     pub label: String,
+    #[serde(default)]
+    pub color: Option<[u8; 3]>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -331,6 +333,9 @@ pub enum Action {
     AddProp(PropKind),
     SetProp(usize, Prop),
     DeleteProp(usize),
+    DuplicateProp(usize),
+    /// Reihenfolge ändern (höherer Index = weiter vorn).
+    MoveProp(usize, usize),
     /// Neuen Effekt für die aktuelle Auswahl anlegen.
     AddEffect(Target, Shape),
     SetEffect(usize, Effect),
@@ -379,6 +384,8 @@ impl Action {
                 | SetPatch { .. }
                 | SetPosition(..)
                 | AddProp(_)
+                | DuplicateProp(_)
+                | MoveProp(..)
                 | SetProp(..)
                 | DeleteProp(_)
                 | AddEffect(..)
@@ -755,7 +762,7 @@ impl Engine {
             Action::AddProp(kind) => {
                 let (w, h) = kind.size();
                 let label = if kind == PropKind::Text { "Text".to_string() } else { String::new() };
-                self.show.props.push(Prop { kind, x: 0.5, y: 0.5, w, h, label });
+                self.show.props.push(Prop { kind, x: 0.5, y: 0.5, w, h, label, color: None });
             }
             Action::SetProp(i, mut p) => {
                 if let Some(slot) = self.show.props.get_mut(i) {
@@ -767,6 +774,18 @@ impl Engine {
             Action::DeleteProp(i) => {
                 if i < self.show.props.len() {
                     self.show.props.remove(i);
+                }
+            }
+            Action::DuplicateProp(i) => {
+                if let Some(mut p) = self.show.props.get(i).cloned() {
+                    (p.x, p.y) = ((p.x + 0.03).min(1.0), (p.y + 0.03).min(1.0));
+                    self.show.props.push(p);
+                }
+            }
+            Action::MoveProp(from, to) => {
+                if from < self.show.props.len() && to < self.show.props.len() {
+                    let p = self.show.props.remove(from);
+                    self.show.props.insert(to, p);
                 }
             }
             Action::ApplyPalette(i) => {

@@ -1,6 +1,6 @@
 //! Szenen: Cuelisten als Raster aus abrufbaren Szenen-Pads.
 
-use crate::theme::{self, card, hint, tile};
+use crate::theme::{self, hint, tile};
 use crate::{App, play, short};
 use eframe::egui::{self, Color32, RichText};
 use lichtpult::engine::{Action, Cue, Engine};
@@ -34,7 +34,7 @@ impl App {
 
         ui.horizontal(|ui| {
             ui.label(RichText::new("Szenen").heading().strong());
-            theme::info(ui, "Szenen", "Eine Szene ist ein gespeicherter Look. Mehrere Szenen bilden eine Cueliste, die du mit GO nacheinander abspielst. Ein Doppelklick oder das Play-Symbol ruft eine Szene direkt ab; rechts bearbeitest du die ausgewählte Szene.");
+            theme::info(ui, "Szenen", "Eine Szene ist ein gespeicherter Look. Mehrere Szenen bilden eine Cueliste, die du mit GO nacheinander abspielst. Ein Doppelklick oder das Play-Symbol ruft eine Szene direkt ab. Am Griff links ziehst du eine Szene an eine andere Stelle; Überblendzeit und Auto-Weiter stellst du direkt in der Zeile ein, Name und mehr rechts.");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let save = theme::icon_text("plus", "Szene speichern", Color32::BLACK).fill(accent).min_size(egui::vec2(150.0, 32.0));
                 if ui.add_enabled(!e.show.fixtures.is_empty(), save).on_hover_text("Speichert den aktuellen Look aller Fixtures als neue Szene").clicked() {
@@ -62,24 +62,18 @@ impl App {
             if ui.add(theme::icon_text("plus", "Liste", theme::TEXT)).on_hover_text("Neue Cueliste").clicked() {
                 acts.push(Action::AddList);
             }
-        });
-
-        card(ui, "", |ui| {
-            ui.horizontal(|ui| {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if e.show.lists.len() > 1 && theme::icon_btn(ui, "trash", "Liste löschen").clicked() {
-                        acts.push(Action::DeleteList(active));
-                    }
-                    let mut name = list.name.clone();
-                    if ui.add(egui::TextEdit::singleline(&mut name).desired_width(130.0)).changed() {
-                        acts.push(Action::RenameList(active, name));
-                    }
-                    let mut looped = list.looped;
-                    if ui.checkbox(&mut looped, "Schleife").on_hover_text("Nach der letzten Szene wieder bei der ersten beginnen").changed() {
-                        acts.push(Action::SetLooped(active, looped));
-                    }
-                });
-            });
+            ui.add_space(12.0);
+            let mut name = list.name.clone();
+            if ui.add(egui::TextEdit::singleline(&mut name).desired_width(130.0)).on_hover_text("Name der Liste").changed() {
+                acts.push(Action::RenameList(active, name));
+            }
+            let mut looped = list.looped;
+            if ui.checkbox(&mut looped, "Schleife").on_hover_text("Nach der letzten Szene wieder bei der ersten beginnen").changed() {
+                acts.push(Action::SetLooped(active, looped));
+            }
+            if e.show.lists.len() > 1 && theme::icon_btn(ui, "trash", "Liste löschen").clicked() {
+                acts.push(Action::DeleteList(active));
+            }
         });
 
         if list.cues.is_empty() {
@@ -104,44 +98,104 @@ impl App {
         let list = e.list();
         let cur = e.cue();
         let w = ui.available_width();
-        let (hr, _) = ui.allocate_exact_size(egui::vec2(w, 22.0), egui::Sense::hover());
-        for (x, t) in [(52.0, "SZENE"), (w - 330.0, "ÜBERBLENDEN"), (w - 220.0, "WEITER"), (w - 130.0, "LOOK")] {
+        let wide = w > 640.0;
+        let (fade_x, follow_x, strip_w) = (if wide { w - 380.0 } else { w - 270.0 }, if wide { w - 270.0 } else { w - 160.0 }, if wide { 100.0 } else { 0.0 });
+        let (hr, _) = ui.allocate_exact_size(egui::vec2(w, 26.0), egui::Sense::hover());
+        let heads = [(76.0, "SZENE", ""), (fade_x, "ÜBERBLENDEN", "Wie lange die Szene braucht, um von der vorherigen auf diese zu wechseln."), (follow_x, "AUTO-WEITER", "Startet nach dieser Wartezeit selbst die nächste Szene. Aus = du drückst GO.")];
+        for (x, t, _) in heads {
             ui.painter().text(egui::pos2(hr.left() + x, hr.center().y), egui::Align2::LEFT_CENTER, t, egui::FontId::proportional(11.0), theme::MUTED);
         }
-        ui.spacing_mut().item_spacing.y = 2.0;
+        if wide {
+            ui.painter().text(egui::pos2(hr.right() - strip_w - 12.0, hr.center().y), egui::Align2::LEFT_CENTER, "FARBEN", egui::FontId::proportional(11.0), theme::MUTED);
+        }
+        ui.spacing_mut().item_spacing.y = 4.0;
+        let gap = 4.0;
+        let top = ui.cursor().top();
+        let pointer_y = ui.input(|i| i.pointer.interact_pos()).map(|p| p.y);
+        let target = self.scene_drag.and_then(|_| pointer_y).map(|y| (((y - top) / (ROW_H + gap)).floor().max(0.0) as usize).min(list.cues.len().saturating_sub(1)));
         for (i, c) in list.cues.iter().enumerate() {
             let live = cur == Some(i);
             let picked = self.scene_sel == i;
             let (rect, r) = ui.allocate_exact_size(egui::vec2(w, ROW_H), egui::Sense::click());
-            let p = ui.painter();
+            let dragging = self.scene_drag == Some(i);
             let fill = if picked { theme::RAISED } else if r.hovered() { theme::HOVER.gamma_multiply(0.5) } else { theme::PANEL };
-            p.rect_filled(rect, 2.0, fill);
-            if live {
-                p.rect_filled(egui::Rect::from_min_size(rect.min, egui::vec2(3.0, rect.height())), 0.0, accent);
+            let p = ui.painter();
+            p.rect(rect, 4.0, if dragging { fill.gamma_multiply(0.5) } else { fill }, egui::Stroke::new(1.0, if live { accent } else { theme::LINE }), egui::StrokeKind::Inside);
+            let mid = rect.center().y;
+            if r.double_clicked() {
+                play(acts, e, Action::GotoCue(i));
+            } else if r.clicked() {
+                self.scene_sel = i;
             }
-            let play_rect = egui::Rect::from_center_size(rect.left_center() + egui::vec2(24.0, 0.0), egui::vec2(28.0, 28.0));
-            let over_play = r.hover_pos().is_some_and(|h| play_rect.contains(h));
-            if over_play {
-                p.rect_filled(play_rect, 4.0, theme::HOVER);
+            let grip = egui::Rect::from_center_size(egui::pos2(rect.left() + 18.0, mid), egui::vec2(24.0, 32.0));
+            let gr = ui.interact(grip, ui.id().with(("grip", i)), egui::Sense::drag());
+            theme::icon("grip", if gr.hovered() || dragging { theme::TEXT } else { theme::MUTED }, 16.0).paint_at(ui, grip.shrink2(egui::vec2(4.0, 8.0)));
+            if gr.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+            }
+            if gr.drag_started() {
+                self.scene_drag = Some(i);
+                self.scene_sel = i;
+            }
+            if gr.drag_stopped() {
+                if let Some(t) = target.filter(|t| *t != i) {
+                    acts.push(Action::MoveCue(i, t));
+                    self.scene_sel = t;
+                }
+                self.scene_drag = None;
+            }
+            let play_rect = egui::Rect::from_center_size(egui::pos2(rect.left() + 52.0, mid), egui::vec2(28.0, 28.0));
+            let pr = ui.interact(play_rect, ui.id().with(("play", i)), egui::Sense::click());
+            if pr.hovered() {
+                ui.painter().rect_filled(play_rect, 4.0, theme::HOVER);
             }
             theme::icon(if live { "stop" } else { "play" }, if live { accent } else { theme::MUTED }, 14.0).paint_at(ui, play_rect.shrink(7.0));
-            let p = ui.painter();
-            let mid = rect.center().y;
-            p.text(egui::pos2(rect.left() + 52.0, mid), egui::Align2::LEFT_CENTER, format!("{}  {}", i + 1, short(&c.name, 28)), egui::FontId::proportional(14.0), if live { accent } else { theme::TEXT });
-            p.text(egui::pos2(rect.left() + w - 330.0, mid), egui::Align2::LEFT_CENTER, format!("{:.1} s", c.fade), egui::FontId::monospace(13.0), theme::MUTED);
-            let follow = c.follow.map_or("—".to_string(), |f| format!("{f:.1} s"));
-            p.text(egui::pos2(rect.left() + w - 220.0, mid), egui::Align2::LEFT_CENTER, follow, egui::FontId::monospace(13.0), theme::MUTED);
-            let strip = egui::Rect::from_min_size(egui::pos2(rect.right() - 130.0, mid - 5.0), egui::vec2(118.0, 10.0));
-            draw_strip(p, strip, &preview(e, c));
-            if r.clicked() {
-                self.scene_sel = i;
-                if over_play {
+            if pr.on_hover_text(if live { "Liste ausschalten" } else { "Szene abrufen" }).clicked() {
+                if live {
+                    acts.push(Action::ReleaseList(e.active));
+                } else {
                     play(acts, e, Action::GotoCue(i));
                 }
             }
-            if r.double_clicked() {
-                play(acts, e, Action::GotoCue(i));
+            ui.painter().text(egui::pos2(rect.left() + 76.0, mid), egui::Align2::LEFT_CENTER, format!("{}  {}", i + 1, short(&c.name, if wide { 30 } else { 16 })), egui::FontId::proportional(14.0), if live { accent } else { theme::TEXT });
+            let cell = |x: f32, width: f32| egui::Rect::from_min_size(egui::pos2(rect.left() + x, mid - 14.0), egui::vec2(width, 28.0));
+            ui.scope_builder(egui::UiBuilder::new().max_rect(cell(fade_x, 100.0)), |ui| {
+                let mut fade = c.fade;
+                if ui.add(egui::DragValue::new(&mut fade).speed(0.05).range(0.0..=300.0).suffix(" s").min_decimals(1)).on_hover_text("Ziehen oder doppelklicken zum Ändern").changed() {
+                    acts.push(Action::SetCueFade(i, fade));
+                }
+            });
+            ui.scope_builder(egui::UiBuilder::new().max_rect(cell(follow_x, 140.0)), |ui| {
+                ui.horizontal(|ui| {
+                    let mut auto = c.follow.is_some();
+                    if ui.checkbox(&mut auto, "").on_hover_text("Automatisch zur nächsten Szene weiter").changed() {
+                        acts.push(Action::SetCueFollow(i, auto.then_some(2.0)));
+                    }
+                    if let Some(mut f) = c.follow {
+                        if ui.add(egui::DragValue::new(&mut f).speed(0.05).range(0.0..=300.0).suffix(" s").min_decimals(1)).on_hover_text("Wartezeit nach dem Überblenden").changed() {
+                            acts.push(Action::SetCueFollow(i, Some(f)));
+                        }
+                    } else {
+                        ui.label(RichText::new("Aus").color(theme::MUTED));
+                    }
+                });
+            });
+            if strip_w > 0.0 {
+                let strip = egui::Rect::from_min_size(egui::pos2(rect.right() - strip_w - 12.0, mid - 6.0), egui::vec2(strip_w, 12.0));
+                draw_strip(ui.painter(), strip, &preview(e, c));
             }
+            if live {
+                ui.painter().rect_filled(egui::Rect::from_min_size(rect.min, egui::vec2(3.0, rect.height())), 2.0, accent);
+            }
+            if let (Some(from), Some(t)) = (self.scene_drag, target) {
+                if t == i && from != i {
+                    let y = if t > from { rect.bottom() + gap / 2.0 } else { rect.top() - gap / 2.0 };
+                    ui.painter().line_segment([egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)], egui::Stroke::new(2.0, accent));
+                }
+            }
+        }
+        if self.scene_drag.is_some() && !ui.input(|i| i.pointer.any_down()) {
+            self.scene_drag = None;
         }
     }
 
