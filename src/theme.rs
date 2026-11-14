@@ -1,13 +1,15 @@
 use eframe::egui::{self, Color32, CornerRadius, Stroke};
 
-pub const BG: Color32 = Color32::from_rgb(12, 14, 18);
-pub const PANEL: Color32 = Color32::from_rgb(19, 22, 29);
-pub const RAISED: Color32 = Color32::from_rgb(28, 32, 42);
-pub const LINE: Color32 = Color32::from_rgb(43, 49, 64);
-pub const TEXT: Color32 = Color32::from_rgb(230, 233, 240);
-pub const MUTED: Color32 = Color32::from_rgb(134, 142, 160);
-pub const DANGER: Color32 = Color32::from_rgb(240, 84, 84);
-pub const OK: Color32 = Color32::from_rgb(70, 200, 130);
+pub const BG: Color32 = Color32::from_rgb(22, 22, 22);
+pub const PANEL: Color32 = Color32::from_rgb(33, 33, 33);
+pub const RAISED: Color32 = Color32::from_rgb(48, 48, 48);
+pub const LINE: Color32 = Color32::from_rgb(66, 66, 66);
+pub const TEXT: Color32 = Color32::from_rgb(244, 244, 244);
+pub const MUTED: Color32 = Color32::from_rgb(168, 168, 168);
+pub const DANGER: Color32 = Color32::from_rgb(250, 77, 86);
+pub const OK: Color32 = Color32::from_rgb(66, 190, 101);
+
+pub const HOVER: Color32 = Color32::from_rgb(64, 64, 64);
 
 pub const PRESETS: [[u8; 3]; 6] = [
     [0, 170, 255],
@@ -20,10 +22,10 @@ pub const PRESETS: [[u8; 3]; 6] = [
 
 pub fn apply(ctx: &egui::Context, accent: Color32) {
     let mut v = egui::Visuals::dark();
-    let r = CornerRadius::same(6);
+    let r = CornerRadius::same(4);
     v.panel_fill = PANEL;
     v.window_fill = PANEL;
-    v.extreme_bg_color = Color32::from_rgb(9, 11, 15);
+    v.extreme_bg_color = Color32::from_rgb(14, 14, 14);
     v.faint_bg_color = RAISED;
     v.window_stroke = Stroke::new(1.0, LINE);
     v.override_text_color = Some(TEXT);
@@ -35,7 +37,7 @@ pub fn apply(ctx: &egui::Context, accent: Color32) {
     for (w, fill) in [
         (&mut v.widgets.noninteractive, PANEL),
         (&mut v.widgets.inactive, RAISED),
-        (&mut v.widgets.hovered, Color32::from_rgb(38, 44, 58)),
+        (&mut v.widgets.hovered, HOVER),
         (&mut v.widgets.active, accent.gamma_multiply(0.5)),
         (&mut v.widgets.open, RAISED),
     ] {
@@ -129,7 +131,7 @@ pub enum Fader {
 /// Horizontaler Regler mit Beschriftung und Prozentwert.
 /// `set` = Wert kommt aus dem Programmer (hell), sonst aus der Wiedergabe (gedimmt).
 /// Doppelklick gibt den Programmer-Wert frei.
-pub fn fader(ui: &mut egui::Ui, label: &str, value: u8, tint: Color32, set: bool) -> Fader {
+pub fn hfader(ui: &mut egui::Ui, label: &str, value: u8, tint: Color32, set: bool) -> Fader {
     let mut out = Fader::None;
     let (rect, r) = ui.allocate_exact_size(egui::vec2(ui.available_width().max(220.0), 26.0), egui::Sense::click_and_drag());
     let p = ui.painter();
@@ -175,4 +177,57 @@ pub fn card<R>(ui: &mut egui::Ui, title: &str, add: impl FnOnce(&mut egui::Ui) -
             add(ui)
         })
         .inner
+}
+
+/// Lucide-Icons (ISC) als SVG, weiß gefärbt und per Tint eingefärbt.
+pub fn icon(name: &str, color: Color32, size: f32) -> egui::Image<'static> {
+    let bytes: &'static [u8] = match name {
+        "undo" => include_bytes!("../assets/icons/undo-2.svg"),
+        "redo" => include_bytes!("../assets/icons/redo-2.svg"),
+        "settings" => include_bytes!("../assets/icons/settings.svg"),
+        "x" => include_bytes!("../assets/icons/x.svg"),
+        "play" => include_bytes!("../assets/icons/play.svg"),
+        "stop" => include_bytes!("../assets/icons/square.svg"),
+        "back" => include_bytes!("../assets/icons/skip-back.svg"),
+        "plus" => include_bytes!("../assets/icons/plus.svg"),
+        _ => include_bytes!("../assets/icons/layers.svg"),
+    };
+    egui::Image::from_bytes(format!("bytes://{name}.svg"), bytes).tint(color).fit_to_exact_size(egui::vec2(size, size))
+}
+
+/// Quadratischer Icon-Knopf (32 px).
+pub fn icon_btn(ui: &mut egui::Ui, name: &str, tip: &str) -> egui::Response {
+    ui.add(egui::Button::image(icon(name, TEXT, 16.0)).min_size(egui::vec2(32.0, 32.0))).on_hover_text(tip)
+}
+
+/// Knopf mit Icon und Text.
+pub fn icon_text(name: &str, text: &str, color: Color32) -> egui::Button<'static> {
+    egui::Button::image_and_text(icon(name, color, 16.0), egui::RichText::new(text.to_string()).color(color))
+}
+
+/// Senkrechter Fader wie am Pult: Wert oben, Beschriftung unten.
+pub fn fader(ui: &mut egui::Ui, label: &str, value: u8, tint: Color32, set: bool) -> Fader {
+    let mut out = Fader::None;
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(56.0, 232.0), egui::Sense::click_and_drag());
+    let p = ui.painter();
+    let track = egui::Rect::from_min_max(egui::pos2(rect.center().x - 4.0, rect.top() + 26.0), egui::pos2(rect.center().x + 4.0, rect.bottom() - 28.0));
+    let k = value as f32 / 255.0;
+    p.text(egui::pos2(rect.center().x, rect.top() + 8.0), egui::Align2::CENTER_CENTER, format!("{}", (value as u32 * 100 + 127) / 255), egui::FontId::monospace(13.0), if set { TEXT } else { MUTED });
+    p.rect_filled(track, 4.0, Color32::from_rgb(14, 14, 14));
+    let y = track.bottom() - track.height() * k;
+    let mut fill = track;
+    fill.set_top(y);
+    p.rect_filled(fill, 4.0, if set { tint } else { tint.gamma_multiply(0.35) });
+    let cap = egui::Rect::from_center_size(egui::pos2(rect.center().x, y), egui::vec2(30.0, 14.0));
+    p.rect(cap, 3.0, if set { Color32::from_rgb(235, 235, 235) } else { Color32::from_rgb(120, 120, 120) }, Stroke::new(1.0, LINE), egui::StrokeKind::Inside);
+    p.line_segment([cap.left_center() + egui::vec2(4.0, 0.0), cap.right_center() - egui::vec2(4.0, 0.0)], Stroke::new(1.5, Color32::from_rgb(40, 40, 40)));
+    p.text(egui::pos2(rect.center().x, rect.bottom() - 10.0), egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(12.5), if set { TEXT } else { MUTED });
+    if r.double_clicked() {
+        out = Fader::Reset;
+    } else if r.is_pointer_button_down_on() {
+        if let Some(pos) = r.interact_pointer_pos() {
+            out = Fader::Set((((track.bottom() - pos.y) / track.height()).clamp(0.0, 1.0) * 255.0).round() as u8);
+        }
+    }
+    out
 }

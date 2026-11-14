@@ -113,8 +113,11 @@ impl App {
         self.frames += 1;
         if self.frames == 3 && std::env::var_os("LICHTPULT_SELECT").is_some() {
             let mut e = self.engine.lock().unwrap();
-            e.apply(Action::Select(3));
-            e.apply(Action::Toggle(4));
+            let ids: Vec<u32> = if std::env::var("LICHTPULT_SELECT").is_ok_and(|v| v == "7") { vec![7] } else { vec![3, 4] };
+            e.apply(Action::Select(ids[0]));
+            for id in &ids[1..] {
+                e.apply(Action::Toggle(*id));
+            }
             e.apply(Action::SetAttr(Attr::Green, 180));
             e.apply(Action::SetAttr(Attr::Dimmer, 220));
         }
@@ -200,7 +203,7 @@ impl App {
                 let mut black = e.blackout;
                 let b = egui::Button::new(RichText::new("Blackout").strong().color(if black { Color32::BLACK } else { theme::TEXT }))
                     .fill(if black { theme::DANGER } else { theme::RAISED })
-                    .min_size(egui::vec2(88.0, 30.0));
+                    .min_size(egui::vec2(88.0, 32.0));
                 if ui.add(b).clicked() {
                     black = !black;
                     acts.push(Action::Blackout(black));
@@ -214,10 +217,10 @@ impl App {
                     ui.label(RichText::new(format!("Master {}%", (m as u32 * 100 + 127) / 255)).size(12.5).color(theme::MUTED));
                 }
                 ui.add_space(8.0);
-                if ui.add_enabled(e.can_redo(), egui::Button::new("↷")).on_hover_text("Wiederholen (Strg+Shift+Z)").clicked() {
+                if ui.add_enabled(e.can_redo(), egui::Button::image(theme::icon("redo", theme::TEXT, 16.0)).min_size(egui::vec2(32.0, 32.0))).on_hover_text("Wiederholen (Strg+Shift+Z)").clicked() {
                     acts.push(Action::Redo);
                 }
-                if ui.add_enabled(e.can_undo(), egui::Button::new("↶")).on_hover_text("Rückgängig (Strg+Z)").clicked() {
+                if ui.add_enabled(e.can_undo(), egui::Button::image(theme::icon("undo", theme::TEXT, 16.0)).min_size(egui::vec2(32.0, 32.0))).on_hover_text("Rückgängig (Strg+Z)").clicked() {
                     acts.push(Action::Undo);
                 }
             });
@@ -225,7 +228,7 @@ impl App {
     }
 
     fn settings(&mut self, ui: &mut egui::Ui, e: &Engine) {
-        ui.menu_button("⚙", |ui| {
+        egui::containers::menu::MenuButton::from_button(egui::Button::image(theme::icon("settings", theme::TEXT, 16.0)).min_size(egui::vec2(32.0, 32.0))).ui(ui, |ui| {
             caption(ui, "Akzentfarbe");
             ui.horizontal(|ui| {
                 for p in theme::PRESETS {
@@ -265,14 +268,14 @@ impl App {
             let list = e.list();
             let cur = e.cue().and_then(|c| list.cues.get(c)).map_or("—".to_string(), |c| c.name.clone());
             let next = list.cues.get(e.cue().map_or(0, |c| c + 1)).map_or("—".to_string(), |c| c.name.clone());
-            if ui.add(egui::Button::new("◀").min_size(egui::vec2(34.0, 30.0))).on_hover_text("Zurück (Backspace)").clicked() {
+            if theme::icon_btn(ui, "back", "Zurück (Backspace)").clicked() {
                 play(acts, e, Action::Back(i));
             }
-            let go = egui::Button::new(RichText::new("GO").strong().color(Color32::BLACK)).fill(accent).min_size(egui::vec2(72.0, 30.0));
+            let go = theme::icon_text("play", "GO", Color32::BLACK).fill(accent).min_size(egui::vec2(80.0, 32.0));
             if ui.add(go).on_hover_text("Nächste Szene (Leertaste)").clicked() {
                 play(acts, e, Action::Go(i));
             }
-            if ui.add(egui::Button::new("■").min_size(egui::vec2(34.0, 30.0))).on_hover_text("Liste ausschalten").clicked() {
+            if theme::icon_btn(ui, "stop", "Liste ausschalten").clicked() {
                 acts.push(Action::ReleaseList(i));
             }
             ui.add_space(10.0);
@@ -450,6 +453,9 @@ fn main() -> eframe::Result {
                 .with_min_inner_size([1100.0, 650.0]),
             ..Default::default()
         },
-        Box::new(|_| Ok(Box::new(App::new(engine, out, midi)))),
+        Box::new(|cc| {
+            egui_extras::install_image_loaders(&cc.egui_ctx);
+            Ok(Box::new(App::new(engine, out, midi)))
+        }),
     )
 }

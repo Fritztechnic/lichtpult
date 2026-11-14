@@ -1,6 +1,6 @@
 //! Pult: Auswahl (links), Programmer (Mitte), Paletten/Effekte (rechts).
 
-use crate::theme::{self, Fader, card, fader, hint, section, tile};
+use crate::theme::{self, Fader, caption, fader, hint, icon_btn, section, tile};
 use crate::{App, rgb_of, short};
 use eframe::egui::{self, Color32, RichText};
 use lichtpult::engine::{Action, Engine, Shape, Target};
@@ -128,12 +128,12 @@ impl App {
                     }
                 });
             }
-            if ui.add_enabled(has_sel, egui::Button::new("＋ Aus Auswahl")).on_hover_text("Aktuelle Auswahl als Gruppe speichern").clicked() {
+            if ui.add_enabled(has_sel, theme::icon_text("plus", "Aus Auswahl", theme::TEXT)).on_hover_text("Aktuelle Auswahl als Gruppe speichern").clicked() {
                 acts.push(Action::RecordGroup);
             }
         });
         if e.show.groups.is_empty() {
-            hint(ui, "Auswahl treffen, dann „＋ Aus Auswahl“. Rechtsklick = umbenennen/löschen.");
+            hint(ui, "Auswahl treffen, dann „Aus Auswahl“. Rechtsklick = umbenennen/löschen.");
         }
     }
 
@@ -149,7 +149,7 @@ impl App {
                 hint(ui, &format!("{} Fixture(s) ausgewählt", sel.len()));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let store = egui::Button::new(RichText::new("● Als Szene speichern").strong().color(Color32::BLACK)).fill(accent).min_size(egui::vec2(170.0, 32.0));
+                let store = theme::icon_text("plus", "Als Szene speichern", Color32::BLACK).fill(accent).min_size(egui::vec2(170.0, 32.0));
                 if ui
                     .add_enabled(!e.show.fixtures.is_empty(), store)
                     .on_hover_text("Hält den aktuellen Look fest. Du findest ihn im Tab „Szenen“ und kannst ihn dort per Klick abrufen.")
@@ -178,65 +178,96 @@ impl App {
             return;
         }
         let play = e.playback_values();
+        let mut cards: Vec<(Kind, Vec<Attr>)> = Vec::new();
+        for kind in Kind::ALL {
+            let attrs: Vec<Attr> = Attr::ALL.into_iter().filter(|a| a.kind() == kind && sel.iter().any(|f| e.show.has(f, *a))).collect();
+            if !attrs.is_empty() {
+                cards.push((kind, attrs));
+            }
+        }
+        let width_of = |kind: Kind, attrs: &[Attr]| {
+            let mut w = attrs.len() as f32 * 64.0 + 32.0;
+            if kind == Kind::Color && attrs.iter().any(|a| matches!(a, Attr::Red | Attr::Green | Attr::Blue)) {
+                w = w.max(420.0);
+            }
+            if kind == Kind::Position && attrs.contains(&Attr::Pan) && attrs.contains(&Attr::Tilt) {
+                w += 170.0;
+            }
+            w
+        };
+        // Karten zeilenweise packen, damit nichts überlappt.
+        let avail = ui.available_width();
+        let mut rows: Vec<Vec<usize>> = vec![Vec::new()];
+        let mut used = 0.0;
+        for (i, (k, a)) in cards.iter().enumerate() {
+            let w = width_of(*k, a) + 16.0;
+            if used + w > avail && used > 0.0 {
+                rows.push(Vec::new());
+                used = 0.0;
+            }
+            used += w;
+            rows.last_mut().unwrap().push(i);
+        }
         egui::ScrollArea::vertical().id_salt("programmer").show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = egui::vec2(12.0, 12.0);
-                for kind in Kind::ALL {
-                    let attrs: Vec<Attr> = Attr::ALL.into_iter().filter(|a| a.kind() == kind && sel.iter().any(|f| e.show.has(f, *a))).collect();
-                    if attrs.is_empty() {
-                        continue;
-                    }
-                    ui.allocate_ui(egui::vec2(380.0, 0.0), |ui| {
-                        card(ui, kind.name(), |ui| {
-                            ui.set_width(356.0);
-                            let get = |a: Attr| -> (u8, bool) {
-                                let vals: Vec<(u8, bool)> = sel.iter().filter(|f| e.show.has(f, a)).map(|f| e.value_of(&play, f.id, a)).collect();
-                                (vals.first().map_or(0, |v| v.0), vals.iter().any(|v| v.1))
-                            };
-                            if kind == Kind::Color && attrs.iter().any(|a| matches!(a, Attr::Red | Attr::Green | Attr::Blue)) {
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.spacing_mut().item_spacing = egui::vec2(5.0, 5.0);
-                                    for (name, c) in QUICK {
-                                        let b = egui::Button::new("").fill(Color32::from_rgb(c[0], c[1], c[2])).min_size(egui::vec2(34.0, 24.0));
-                                        if ui.add(b).on_hover_text(name).clicked() {
-                                            for (a, v) in [(Attr::Red, c[0]), (Attr::Green, c[1]), (Attr::Blue, c[2])] {
+            for row in rows {
+                ui.horizontal_top(|ui| {
+                    ui.spacing_mut().item_spacing.x = 16.0;
+                    for i in row {
+                        let (kind, attrs) = &cards[i];
+                        let kind = *kind;
+                        egui::Frame::new().fill(theme::PANEL).stroke(egui::Stroke::new(1.0, theme::LINE)).corner_radius(8).inner_margin(16).show(ui, |ui| {
+                            ui.vertical(|ui| {
+                                caption(ui, kind.name());
+                                let get = |a: Attr| -> (u8, bool) {
+                                    let vals: Vec<(u8, bool)> = sel.iter().filter(|f| e.show.has(f, a)).map(|f| e.value_of(&play, f.id, a)).collect();
+                                    (vals.first().map_or(0, |v| v.0), vals.iter().any(|v| v.1))
+                                };
+                                if kind == Kind::Color && attrs.iter().any(|a| matches!(a, Attr::Red | Attr::Green | Attr::Blue)) {
+                                    ui.horizontal(|ui| {
+                                        ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+                                        for (name, c) in QUICK {
+                                            let b = egui::Button::new("").fill(Color32::from_rgb(c[0], c[1], c[2])).min_size(egui::vec2(32.0, 32.0));
+                                            if ui.add(b).on_hover_text(name).clicked() {
+                                                for (a, v) in [(Attr::Red, c[0]), (Attr::Green, c[1]), (Attr::Blue, c[2])] {
+                                                    acts.push(Action::SetAttr(a, v));
+                                                }
+                                            }
+                                        }
+                                    });
+                                    let mut rgb = [get(Attr::Red).0, get(Attr::Green).0, get(Attr::Blue).0];
+                                    ui.horizontal(|ui| {
+                                        if ui.color_edit_button_srgb(&mut rgb).on_hover_text("Farbwähler").changed() {
+                                            for (a, v) in [(Attr::Red, rgb[0]), (Attr::Green, rgb[1]), (Attr::Blue, rgb[2])] {
                                                 acts.push(Action::SetAttr(a, v));
                                             }
                                         }
+                                        hint(ui, "Eigene Farbe wählen");
+                                    });
+                                }
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 8.0;
+                                    for a in attrs {
+                                        let (value, set) = get(*a);
+                                        match fader(ui, &short(a.name(), 8), value, theme::attr_tint(*a, accent), set) {
+                                            Fader::Set(v) => acts.push(Action::SetAttr(*a, v)),
+                                            Fader::Reset => acts.push(Action::ReleaseAttr(*a)),
+                                            Fader::None => {}
+                                        }
                                     }
-                                    let mut rgb = [get(Attr::Red).0, get(Attr::Green).0, get(Attr::Blue).0];
-                                    if ui.color_edit_button_srgb(&mut rgb).on_hover_text("Farbwähler").changed() {
-                                        for (a, v) in [(Attr::Red, rgb[0]), (Attr::Green, rgb[1]), (Attr::Blue, rgb[2])] {
-                                            acts.push(Action::SetAttr(a, v));
+                                    if kind == Kind::Position && attrs.contains(&Attr::Pan) && attrs.contains(&Attr::Tilt) {
+                                        if let Some((x, y)) = xy_pad(ui, get(Attr::Pan).0, get(Attr::Tilt).0, accent) {
+                                            acts.push(Action::SetAttr(Attr::Pan, x));
+                                            acts.push(Action::SetAttr(Attr::Tilt, y));
                                         }
                                     }
                                 });
-                                ui.add_space(4.0);
-                            }
-                            for a in &attrs {
-                                let (value, set) = get(*a);
-                                match fader(ui, a.name(), value, theme::attr_tint(*a, accent), set) {
-                                    Fader::Set(v) => acts.push(Action::SetAttr(*a, v)),
-                                    Fader::Reset => acts.push(Action::ReleaseAttr(*a)),
-                                    Fader::None => {}
-                                }
-                            }
-                            if kind == Kind::Position && attrs.contains(&Attr::Pan) && attrs.contains(&Attr::Tilt) {
-                                ui.add_space(6.0);
-                                ui.horizontal(|ui| {
-                                    if let Some((x, y)) = xy_pad(ui, get(Attr::Pan).0, get(Attr::Tilt).0, accent) {
-                                        acts.push(Action::SetAttr(Attr::Pan, x));
-                                        acts.push(Action::SetAttr(Attr::Tilt, y));
-                                    }
-                                    hint(ui, "Ziehen im Feld:\nwaagrecht = Pan\nsenkrecht = Tilt");
-                                });
-                            }
+                            });
                         });
-                    });
-                }
-            });
-            ui.add_space(6.0);
-            hint(ui, "Regler ziehen zum Einstellen · Doppelklick gibt einen Wert wieder frei");
+                    }
+                });
+                ui.add_space(8.0);
+            }
+            hint(ui, "Regler ziehen · Doppelklick auf einen Regler gibt den Wert wieder frei · hell = manuell, gedimmt = aus einer Szene");
         });
     }
 
@@ -281,11 +312,11 @@ impl App {
                     });
                 }
                 let can = !e.programmer.is_empty();
-                if ui.add_enabled(can, egui::Button::new("＋ Speichern")).on_hover_text("Die eingestellten Werte dieser Art als Palette sichern").clicked() {
+                if ui.add_enabled(can, theme::icon_text("plus", "Speichern", theme::TEXT)).on_hover_text("Die eingestellten Werte dieser Art als Palette sichern").clicked() {
                     acts.push(Action::RecordPalette(self.pal_kind));
                 }
             });
-            hint(ui, "So geht’s: Fixtures wählen → Wert einstellen → „＋ Speichern“. Rechtsklick = umbenennen/löschen.");
+            hint(ui, "So geht’s: Fixtures wählen → Wert einstellen → „Speichern“. Rechtsklick = umbenennen/löschen.");
             ui.add_space(10.0);
             ui.separator();
 
@@ -311,14 +342,13 @@ impl App {
                 ui.add_space(4.0);
                 egui::Frame::new().fill(theme::RAISED).corner_radius(8).inner_margin(8).show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        let b = egui::Button::new(if fx.running { "■" } else { "▶" }).min_size(egui::vec2(30.0, 26.0));
-                        if ui.add(if fx.running { b.fill(accent.gamma_multiply(0.3)) } else { b }).on_hover_text("Starten/Stoppen").clicked() {
+                        if icon_btn(ui, if fx.running { "stop" } else { "play" }, "Starten/Stoppen").clicked() {
                             acts.push(Action::ToggleEffect(i));
                         }
                         ui.label(RichText::new(short(&fx.name, 16)).strong().color(if fx.running { accent } else { theme::TEXT }));
                         hint(ui, &format!("{} Fixtures", fx.ids.len()));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("✕").on_hover_text("Effekt löschen").clicked() {
+                            if icon_btn(ui, "x", "Effekt löschen").clicked() {
                                 acts.push(Action::DeleteEffect(i));
                             }
                         });

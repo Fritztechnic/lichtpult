@@ -107,7 +107,7 @@ impl App {
                     self.out_universe = u;
                 }
             }
-            if ui.button("＋").on_hover_text("Nächstes Universum").clicked() {
+            if theme::icon_btn(ui, "plus", "Nächstes Universum").clicked() {
                 self.patch.2 = unis.last().copied().unwrap_or(0) + 1;
             }
             if ui.button("Lückenlos adressieren").on_hover_text("Alle Fixtures dieses Universums ab 1 neu anordnen").clicked() {
@@ -200,7 +200,7 @@ impl App {
                     }
                     let span = format!("{}–{}", f.address, e.show.range(f).end.saturating_sub(1));
                     ui.label(if bad { RichText::new(format!("{span}  Konflikt")).color(theme::DANGER) } else { RichText::new(span) });
-                    if ui.small_button("✕").on_hover_text("Fixture entfernen").clicked() {
+                    if theme::icon_btn(ui, "x", "Fixture entfernen").clicked() {
                         acts.push(Action::RemoveFixture(f.id));
                     }
                     ui.end_row();

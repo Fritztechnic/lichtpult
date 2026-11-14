@@ -153,7 +153,7 @@ impl App {
                                 m.learn = Some(t);
                             }
                             if let Some(i) = bound {
-                                if ui.small_button("✕").clicked() {
+                                if theme::icon_btn(ui, "x", "Zuordnung entfernen").clicked() {
                                     del = Some(i);
                                 }
                             }

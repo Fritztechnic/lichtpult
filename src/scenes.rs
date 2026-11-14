@@ -1,6 +1,6 @@
 //! Szenen: Cuelisten als Raster aus abrufbaren Szenen-Pads.
 
-use crate::theme::{self, card, fader, hint, pill, tile, Fader};
+use crate::theme::{self, card, hfader, hint, pill, tile, Fader};
 use crate::{App, play, short};
 use eframe::egui::{self, Color32, RichText};
 use lichtpult::engine::{Action, Cue, Engine};
@@ -42,7 +42,7 @@ impl App {
                     acts.push(Action::SelectList(i));
                 }
             }
-            if ui.button("＋ Liste").on_hover_text("Neue Cueliste").clicked() {
+            if ui.add(theme::icon_text("plus", "Liste", theme::TEXT)).on_hover_text("Neue Cueliste").clicked() {
                 acts.push(Action::AddList);
             }
         });
@@ -54,14 +54,14 @@ impl App {
         card(ui, "", |ui| {
             ui.horizontal(|ui| {
                 let big = egui::vec2(52.0, 44.0);
-                if ui.add(egui::Button::new(RichText::new("◀").size(18.0)).min_size(big)).on_hover_text("Zurück (Backspace)").clicked() {
+                if ui.add(egui::Button::image(theme::icon("back", theme::TEXT, 20.0)).min_size(big)).on_hover_text("Zurück (Backspace)").clicked() {
                     play(acts, e, Action::Back(active));
                 }
-                let go = egui::Button::new(RichText::new("GO").size(20.0).strong().color(Color32::BLACK)).fill(accent).min_size(egui::vec2(110.0, 44.0));
+                let go = theme::icon_text("play", "GO", Color32::BLACK).fill(accent).min_size(egui::vec2(110.0, 44.0));
                 if ui.add(go).on_hover_text("Nächste Szene (Leertaste)").clicked() {
                     play(acts, e, Action::Go(active));
                 }
-                if ui.add(egui::Button::new(RichText::new("■").size(18.0)).min_size(big)).on_hover_text("Liste ausschalten").clicked() {
+                if ui.add(egui::Button::image(theme::icon("stop", theme::TEXT, 20.0)).min_size(big)).on_hover_text("Liste ausschalten").clicked() {
                     acts.push(Action::ReleaseList(active));
                 }
                 ui.add_space(12.0);
@@ -75,7 +75,7 @@ impl App {
                 let lvl = e.players.get(active).map_or(255, |p| p.level);
                 ui.vertical(|ui| {
                     ui.set_width(260.0);
-                    if let Fader::Set(v) = fader(ui, "Helligkeit", lvl, accent, false) {
+                    if let Fader::Set(v) = hfader(ui, "Helligkeit", lvl, accent, false) {
                         acts.push(Action::SetLevel(active, v));
                     }
                 });
