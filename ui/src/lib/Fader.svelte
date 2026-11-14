@@ -1,4 +1,5 @@
 <script lang="ts">
+  // Breiter vertikaler Fader (Zeiger-gesteuert) mit Prozent- oder Rohwert-Anzeige.
   let { value = 0, max = 255, color = '#c03030', label = '', unit = 'pct', onchange, onrelease, ondblclick }: {
     value?: number; max?: number; color?: string; label?: string; unit?: 'pct' | 'raw'
     onchange?: (v: number) => void; onrelease?: () => void; ondblclick?: () => void

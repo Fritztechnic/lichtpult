@@ -1,4 +1,5 @@
 <script lang="ts">
+  // Info-Symbol: Erklärung erscheint beim Überfahren mit der Maus.
   import InfoIcon from '@lucide/svelte/icons/info'
   let { text }: { text: string } = $props()
   let open = $state(false)

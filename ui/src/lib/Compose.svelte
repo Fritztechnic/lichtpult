@@ -1,9 +1,13 @@
 <script lang="ts">
+  // Compose: Fixture Center, Programmer und Parameter/Encoder.
+  // `part` wählt, welcher Teil gezeigt wird; im Hauptfenster (`all`) sind es alle drei,
+  // in einem Fenster jeweils nur einer. F-Tasten gelten nur im Hauptfenster.
   import { S } from '../store.svelte'
   import Fader from './Fader.svelte'
   import Tool from './Tool.svelte'
   import Info from './Info.svelte'
   import { ATTR_COLOR, ATTR_LABEL, KIND_OF, SHAPES, TARGETS, type Kind } from './types'
+  import Scissors from '@lucide/svelte/icons/scissors'
   import Undo2 from '@lucide/svelte/icons/undo-2'
   import Layers from '@lucide/svelte/icons/layers'
   import type { MenuItem } from '../store.svelte'
@@ -28,13 +32,14 @@
   import Clapperboard from '@lucide/svelte/icons/clapperboard'
   import Film from '@lucide/svelte/icons/film'
 
-  let { part = 'all' }: { part?: 'all' | 'fc' | 'prog' | 'par' } = $props()
+  let { part = 'all', tab = 'fixtures' }: { part?: 'all' | 'fc' | 'prog' | 'par'; tab?: 'groups' | 'fixtures' | 'selected' } = $props()
   const live = $derived(S.live!)
   const show = $derived(S.show!)
   const sel = $derived(new Set(live.selection))
   const liveFx = $derived(new Map(live.fixtures.map((f) => [f.id, f])))
 
-  let fcTab = $state<'groups' | 'fixtures' | 'selected'>('fixtures')
+  // svelte-ignore state_referenced_locally
+  let fcTab = $state<'groups' | 'fixtures' | 'selected'>(tab)
   let mode = $state<'apply' | 'update' | 'rename' | 'delete'>('apply')
   let parTab = $state<'Intensity' | 'Position' | 'Color' | 'Beam' | 'FX'>('Intensity')
   let focusAttr = $state('Dimmer')
@@ -45,7 +50,7 @@
   const fill = (n: number, c: number) => Math.max(c * 6, Math.ceil(n / c) * c) - n
   const pct = (v: number) => Math.round((v / 255) * 100) + '%'
 
-  // plain press selects only this fixture, dragging over more pads adds them; Ctrl toggles, Shift selects a range
+  // Klick wählt nur dieses Fixture, Ziehen über weitere Pads fügt sie hinzu; Strg schaltet um, Shift wählt einen Bereich
   let dragging = false
   function padDown(id: number, e: PointerEvent) {
     if (e.button !== 0) return
@@ -67,6 +72,23 @@
   const groupsOf = (id: number) => show.groups.map((g, i) => ({ g, i })).filter((x) => x.g.ids.includes(id))
 
   let typeFilter = $state(-1)
+  // Slice: teilt die Auswahl in n gleich große Teile und wählt reihum einen davon
+  let slice = $state({ n: 0, k: 0, last: '' })
+  async function sliceSel() {
+    const ids = show.fixtures.filter((f) => sel.has(f.id)).map((f) => f.id)
+    if (ids.join() !== slice.last) {
+      const n = parseInt((await S.ask('Auswahl in wie viele Teile teilen?', '2')) ?? '')
+      if (!(n > 1)) return
+      slice = { n, k: 0, last: '' }
+      base = ids
+    }
+    const size = Math.ceil(base.length / slice.n)
+    const part = base.slice(slice.k * size, (slice.k + 1) * size)
+    slice.k = (slice.k + 1) % slice.n
+    slice.last = part.join()
+    S.act([{ Select: part[0] }, ...part.slice(1).map((id) => ({ Toggle: id }))])
+  }
+  let base: number[] = []
   function reselect() {
     const ids = idsOf(S.prevSel)
     if (ids.length) S.act([{ Select: ids[0] }, ...ids.slice(1).map((id) => ({ Toggle: id }))])
@@ -116,7 +138,7 @@
     (fcTab === 'selected' ? show.fixtures.filter((f) => sel.has(f.id)) : show.fixtures).filter((f) => typeFilter < 0 || f.ty === typeFilter),
   )
 
-  // attributes available for the selected fixtures
+  // Attribute, die die gewählten Fixtures haben
   const attrs = $derived.by(() => {
     const out = new Set<string>()
     for (const f of show.fixtures) {
@@ -210,6 +232,7 @@
       <Tool icon={Eraser} label="None" acc="var(--red-hi)" onclick={() => S.act('ClearSelection')} />
       <Tool icon={ArrowLeftRight} label="Invert" acc="var(--blue)" onclick={() => S.act('InvertSelection')} />
       <Tool icon={Lightbulb} label="Highlight" acc="var(--yellow)" on={live.highlight} onclick={() => S.act({ Highlight: !live.highlight })} />
+      <Tool icon={Scissors} label="Slice" acc="var(--purple)" disabled={live.selection.length < 2 && !slice.last} onclick={sliceSel} title="Auswahl in Teile teilen und reihum wählen" />
       <Tool icon={Undo2} label="Reselect" acc="var(--blue)" disabled={!S.prevSel.length} onclick={reselect} title="Restore the previous selection" />
       {#if fcTab !== 'groups'}<Tool icon={ListFilter} label="Every" acc="var(--yellow)" onclick={every} />{/if}
       {#if fcTab !== 'groups'}<Tool icon={Layers} label="Same type" acc="var(--purple)" disabled={!live.selection.length} onclick={sameType} title="Select all fixtures of the same type as the last selected" />{/if}
@@ -290,6 +313,7 @@
   {#if part === 'all' || part === 'par'}
   <section class="win par">
     <header>
+      <Tool icon={Fan} label="Fanning" acc="var(--purple)" disabled={!live.selection.length} onclick={fan} title="Werte über die Auswahl auffächern" />
       <div class="title">Parameters <span class="dim">· {live.selection.length} selected</span>
         <Info text="Wide faders set one attribute on all selected fixtures. Double-click a fader to release that attribute from the programmer. Color has a picker, Position an XY pad, FX holds the effect engine." /></div>
     </header>

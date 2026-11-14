@@ -1,3 +1,5 @@
+// Zentraler Zustand der Oberfläche: Show- und Live-Daten (alle 40 ms gepollt), Menüs,
+// Fenster und Dialoge. Änderungen an der Show gehen immer über `act` als `Action` an die Engine.
 import { call } from './api'
 import { WIN_VIEWS, type Live, type Show, type FixtureType } from './lib/types'
 
@@ -23,6 +25,7 @@ class Store {
   private busy = false
   private showRev = -1
 
+  // Polling starten; die Show wird nur neu geladen, wenn sich `rev` ändert
   start() {
     const tick = async () => {
       if (!this.busy) {
@@ -56,6 +59,7 @@ class Store {
   }
   private t = 0
 
+  // `Action` (oder Liste von Actions) an die Engine schicken
   async act(...a: unknown[]) {
     try {
       await call('dispatch', a.length === 1 ? a[0] : a)
@@ -64,6 +68,7 @@ class Store {
     }
   }
 
+  // Befehlszeile ausführen (siehe `cmd.rs`)
   async cmd(line: string) {
     try {
       await call('command', line)
@@ -74,16 +79,19 @@ class Store {
     }
   }
 
+  // Eingabedialog; liefert `null` bei Abbruch
   ask(title: string, value = ''): Promise<string | null> {
     return new Promise((resolve) => (this.dialog = { title, value, resolve }))
   }
 
+  // Rechtsklick-Menü an der Mausposition öffnen
   menu(e: MouseEvent, items: MenuItem[]) {
     e.preventDefault()
     e.stopPropagation()
     this.ctx = { x: e.clientX, y: e.clientY, items }
   }
 
+  // Fenster öffnen oder nach vorn holen; `arg` ist Index/ID des bearbeiteten Objekts bzw. der Ansicht
   openWin(kind: Win['kind'], arg = 0) {
     const id = kind + ':' + arg
     const ex = this.wins.find((w) => w.id === id)
@@ -99,13 +107,14 @@ class Store {
     else this.openWin(kind, arg)
   }
   closeWin(id: string) { this.wins = this.wins.filter((w) => w.id !== id) }
+  // Fenster nach vorn holen
   focusWin(id: string) { const w = this.wins.find((x) => x.id === id); if (w) w.z = ++this.z }
 
   get hasProgrammer() {
     return !!this.live && Object.keys(this.live.programmer).length > 0
   }
 
-  // Playback semantics as in the console: programmer is cleared before cue changes.
+  // Wie am Pult: vor jedem Cue-Wechsel wird der Programmer gelöscht.
   async play(kind: 'Go' | 'Back' | 'ReleaseList', list: number) {
     if (kind !== 'ReleaseList' && this.hasProgrammer) await this.act('ClearProgrammer')
     await this.act({ [kind]: list })

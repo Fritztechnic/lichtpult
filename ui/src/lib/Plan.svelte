@@ -1,4 +1,5 @@
 <script lang="ts">
+  // Bühnenplan: Fixtures und Dekoration (Props) per Drag & Drop platzieren.
   import { S } from '../store.svelte'
   import Tool from './Tool.svelte'
   import Info from './Info.svelte'

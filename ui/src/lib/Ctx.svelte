@@ -1,8 +1,10 @@
 <script lang="ts">
+  // Rechtsklick-Menü. Der Inhalt kommt aus `S.menu(event, items)`; Klick, Escape oder
+  // ein weiterer Rechtsklick schließen es.
   import { S } from '../store.svelte'
 
   const c = $derived(S.ctx)
-  // keep the menu inside the viewport
+  // Menü im sichtbaren Bereich halten
   const pos = $derived(c ? { x: Math.min(c.x, window.innerWidth - 200), y: Math.min(c.y, window.innerHeight - c.items.length * 28 - 10) } : null)
   const close = () => (S.ctx = null)
 </script>

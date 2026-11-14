@@ -11,6 +11,14 @@ Open-Source-Lichtsteuerung für Bühnentechnik im Stil von Obsidian Onyx.
 
 Alle Bedienelemente steuern die Engine nur über `engine::Action`.
 
+## Oberfläche (`ui/src`)
+- `store.svelte.ts` – Zustand: Polling der Engine, `act`/`cmd`, Rechtsklick-Menü, Fenster, Dialoge.
+- `App.svelte` – Rahmen: Kopfzeile, linke Navigation, Bank, Befehlszeile.
+- Ansichten: `Compose` (Fixture Center, Programmer, Parameter), `Presets`, `Playback`, `Plan`, `Patch`, `Output`.
+- `Windows.svelte` – frei verschiebbare Fenster: Editoren (Cue, Cuelist, FX, Gruppe, Preset, Fixture), Keypad und alle Ansichten
+  (Menü *Windows*, Liste in `WIN_VIEWS`). `CueValues` und `Status` gibt es nur als Fenster.
+- Auswahl: Klick, Ziehen, Strg (umschalten), Shift (Bereich); Gruppen mit Strg/Shift hinzufügen/entfernen; Tabellen haben Mehrfachauswahl.
+
 ## Starten
 ```
 cd ui && npm install && npm run build && cd ..

@@ -1,3 +1,4 @@
+// Verbindung zur Engine: Tauri-Command in der Desktop-App, sonst HTTP zum Entwicklungsserver.
 const tauri = '__TAURI_INTERNALS__' in window
 
 export async function call<T = any>(method: string, body: unknown = null): Promise<T> {

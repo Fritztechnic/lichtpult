@@ -1,4 +1,6 @@
 <script lang="ts">
+  // Rahmen der Oberfläche: Kopfzeile, linke Navigation, aktive Ansicht, Bank mit Cuelists,
+  // Befehlszeile und Dialoge. Alle Bedienung läuft über den Store (`S`) zur Engine.
   import { onMount } from 'svelte'
   import { S } from './store.svelte'
   import { call } from './api'

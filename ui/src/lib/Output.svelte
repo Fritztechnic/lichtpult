@@ -1,4 +1,5 @@
 <script lang="ts">
+  // Ausgabe: Art-Net/sACN-Einstellungen, MIDI-Bindungen und Live-Vorschau der Universen.
   import { S } from '../store.svelte'
   import { call } from '../api'
   import Info from './Info.svelte'

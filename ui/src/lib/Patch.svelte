@@ -1,4 +1,6 @@
 <script lang="ts">
+  // Patch: gepatchte Fixtures als Tabelle, neue Fixtures aus Bibliothek oder Import.
+  // Die Zeilenauswahl ist dieselbe Auswahl wie in Compose.
   import { S } from '../store.svelte'
   import { call } from '../api'
   import Tool from './Tool.svelte'
@@ -24,7 +26,7 @@
   const unis = $derived([...new Set([1, ...show.fixtures.map((f) => f.universe)])].sort((a, b) => a - b))
   const clash = $derived(new Set(live.conflicts))
 
-  // next free address in the chosen universe
+  // nächste freie Adresse im gewählten Universum
   function nextFree() {
     let end = 1
     for (const f of show.fixtures) if (f.universe === universe) end = Math.max(end, f.address + show.types[f.ty].channels.length)

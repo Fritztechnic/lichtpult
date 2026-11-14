@@ -1,4 +1,6 @@
 <script lang="ts">
+  // Presets nach Typ (Intensity, Position, Color, Beam). Record speichert die
+  // Programmer-Werte des Typs; Update/Rename/Delete wirken auf das nächste angeklickte Preset.
   import { S } from '../store.svelte'
   import Tool from './Tool.svelte'
   import Info from './Info.svelte'

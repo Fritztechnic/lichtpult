@@ -1,8 +1,11 @@
 <script lang="ts">
+  // Playback: Cue-Tabelle der aktiven Cuelist mit Mehrfachauswahl, Drag & Drop
+  // und Cuelist-Verzeichnis. Werte in einer markierten Zeile gelten für alle markierten Cues.
   import { S } from '../store.svelte'
   import Tool from './Tool.svelte'
   import Info from './Info.svelte'
   import Fader from './Fader.svelte'
+  import Crosshair from '@lucide/svelte/icons/crosshair'
   import Play from '@lucide/svelte/icons/play'
   import SkipBack from '@lucide/svelte/icons/skip-back'
   import Square from '@lucide/svelte/icons/square'
@@ -31,6 +34,11 @@
     else rows = [i]
     row = i
   }
+  // "Follow Cue": die Zeilenauswahl läuft mit der aktiven Cue mit
+  let follow = $state(false)
+  $effect(() => {
+    if (follow && player?.cue != null) { rows = [player.cue]; row = player.cue }
+  })
   const tg = (i: number) => (rows.includes(i) ? rows : [i])
   const each = (ids: number[], mk: (i: number) => any, desc = false) => { for (const i of [...ids].sort((a, b) => (desc ? b - a : a - b))) S.act(mk(i)) }
   let dragFrom = $state<number | null>(null)
@@ -59,6 +67,7 @@
       <Tool icon={SkipBack} label="Back" onclick={() => S.play('Back', l)} />
       <Tool icon={Play} label="Go" on={player?.cue != null} onclick={() => S.play('Go', l)} />
       <Tool icon={Square} label="Release" onclick={() => S.play('ReleaseList', l)} />
+      <Tool icon={Crosshair} label="Follow Cue" acc="var(--green)" on={follow} onclick={() => (follow = !follow)} title="Zeilenauswahl folgt der laufenden Cue" />
       <div class="title">{list.name} <span class="dim">· {list.cues.length} cues · {player?.cue != null ? `cue ${player.cue + 1}` : 'released'}</span>
         <Info text="Double-click a row to jump to a cue. Drag rows by the handle to reorder. Fade, delay, follow and comment are edited in place. Follow = seconds after the fade until the next cue starts automatically; empty means manual Go. Scenes contain a full look and track nothing from earlier cues." /></div>
       <Tool icon={Film} label="Record Cue" onclick={() => S.act('RecordCue')} />

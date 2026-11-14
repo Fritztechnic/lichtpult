@@ -1,4 +1,6 @@
 <script lang="ts">
+  // Frei verschiebbare Fenster (Editoren und Ansichten) innerhalb der App.
+  // Verwaltet wird die Liste in `S.wins`; Position und Größe liegen im jeweiligen `Win`.
   import { S, type Win } from '../store.svelte'
   import Keypad from './Keypad.svelte'
   import Compose from './Compose.svelte'
@@ -7,6 +9,8 @@
   import Plan from './Plan.svelte'
   import Patch from './Patch.svelte'
   import Output from './Output.svelte'
+  import CueValues from './CueValues.svelte'
+  import Status from './Status.svelte'
   import X from '@lucide/svelte/icons/x'
   import { SHAPES, TARGETS, WIN_VIEWS } from './types'
 
@@ -26,7 +30,7 @@
     el.addEventListener('pointermove', mv)
     el.addEventListener('pointerup', up)
   }
-  // native CSS resize does not report size; remember it when the pointer is released
+  // CSS-`resize` meldet die Größe nicht; sie wird beim Loslassen gemerkt
   function remember(e: PointerEvent, w: Win) {
     const el = e.currentTarget as HTMLElement
     if (el.offsetWidth !== w.w) w.w = el.offsetWidth
@@ -65,6 +69,9 @@
       {:else if w.kind === 'view'}
         {@const v = WIN_VIEWS[w.arg].id}
         {#if v === 'fc' || v === 'prog' || v === 'par'}<Compose part={v} />
+        {:else if v === 'groups'}<Compose part="fc" tab="groups" />
+        {:else if v === 'cuevalues'}<CueValues />
+        {:else if v === 'status'}<Status />
         {:else if v === 'presets'}<Presets />
         {:else if v === 'playback'}<Playback />
         {:else if v === 'plan'}<Plan />

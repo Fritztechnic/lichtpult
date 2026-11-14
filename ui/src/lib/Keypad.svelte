@@ -1,4 +1,5 @@
 <script lang="ts">
+  // Tastenfeld für die Befehlszeile; die Tasten schreiben nur in `S.cmdText`.
   import { S } from '../store.svelte'
 
   const word = (t: string) => (S.cmdText = S.cmdText.trimEnd() + (S.cmdText ? ' ' : '') + t + ' ')

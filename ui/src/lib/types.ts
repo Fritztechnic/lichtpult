@@ -1,3 +1,4 @@
+// Datentypen der JSON-API (spiegeln `engine.rs`) und gemeinsame Tabellen für die Oberfläche.
 export type Attr = string
 export type Kind = 'Intensity' | 'Color' | 'Position' | 'Beam'
 export type Values = Record<string, Record<string, number>>
@@ -47,12 +48,16 @@ export const PROP_LABEL: Record<string, string> = {
   Vorhang: 'Curtain', Mikrofon: 'Microphone', Treppe: 'Stairs', Bildschirm: 'Screen', Rechteck: 'Rectangle',
 }
 
+// Fenster, die über "Windows" frei auf der Arbeitsfläche geöffnet werden können.
 export const WIN_VIEWS = [
   { id: 'fc', title: 'Fixture Center', w: 560, h: 420 },
   { id: 'prog', title: 'Programmer', w: 620, h: 380 },
   { id: 'par', title: 'Parameters / Encoders', w: 640, h: 440 },
   { id: 'presets', title: 'Presets', w: 640, h: 420 },
-  { id: 'playback', title: 'Cuelist Values', w: 760, h: 460 },
+  { id: 'groups', title: 'Groups', w: 480, h: 360 },
+  { id: 'playback', title: 'Cuelist', w: 760, h: 460 },
+  { id: 'cuevalues', title: 'Cuelist Values', w: 640, h: 400 },
+  { id: 'status', title: 'Status', w: 380, h: 320 },
   { id: 'plan', title: '2D Plan', w: 700, h: 460 },
   { id: 'patch', title: 'Patch', w: 760, h: 440 },
   { id: 'output', title: 'Output', w: 560, h: 420 },
