@@ -24,6 +24,15 @@ pub enum Attr {
     L6,
     L7,
     L8,
+    ColorWheel,
+    Gobo,
+    Prism,
+    Iris,
+    Focus,
+    Frost,
+    /// Feinkanäle (16 Bit); werden aus dem Grobwert berechnet, nie direkt bedient.
+    PanFine,
+    TiltFine,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -35,7 +44,8 @@ pub enum Kind {
 }
 
 impl Attr {
-    pub const ALL: [Attr; 19] = [
+    /// Bedienbare Attribute (ohne Feinkanäle).
+    pub const ALL: [Attr; 25] = [
         Attr::Dimmer,
         Attr::Red,
         Attr::Green,
@@ -55,6 +65,12 @@ impl Attr {
         Attr::L6,
         Attr::L7,
         Attr::L8,
+        Attr::ColorWheel,
+        Attr::Gobo,
+        Attr::Prism,
+        Attr::Iris,
+        Attr::Focus,
+        Attr::Frost,
     ];
 
     pub fn name(self) -> &'static str {
@@ -66,8 +82,8 @@ impl Attr {
             Attr::Green => "Grün",
             Attr::Blue => "Blau",
             Attr::White => "Weiß",
-            Attr::Pan => "Pan",
-            Attr::Tilt => "Tilt",
+            Attr::Pan | Attr::PanFine => "Pan",
+            Attr::Tilt | Attr::TiltFine => "Tilt",
             Attr::Zoom => "Zoom",
             Attr::Strobe => "Strobe",
             Attr::L1 => "Licht 1",
@@ -78,21 +94,29 @@ impl Attr {
             Attr::L6 => "Licht 6",
             Attr::L7 => "Licht 7",
             Attr::L8 => "Licht 8",
+            Attr::ColorWheel => "Farbrad",
+            Attr::Gobo => "Gobo",
+            Attr::Prism => "Prisma",
+            Attr::Iris => "Iris",
+            Attr::Focus => "Fokus",
+            Attr::Frost => "Frost",
         }
     }
 
     pub fn kind(self) -> Kind {
         match self {
-            Attr::Dimmer | Attr::L1 | Attr::L2 | Attr::L3 | Attr::L4 | Attr::L5 | Attr::L6 | Attr::L7 | Attr::L8 => Kind::Intensity,
-            Attr::Red | Attr::Green | Attr::Blue | Attr::White | Attr::Amber | Attr::Uv => Kind::Color,
-            Attr::Pan | Attr::Tilt => Kind::Position,
-            Attr::Zoom | Attr::Strobe => Kind::Beam,
+            Attr::Dimmer | Attr::L1 | Attr::L2 | Attr::L3 | Attr::L4 | Attr::L5 | Attr::L6 | Attr::L7 | Attr::L8 => {
+                Kind::Intensity
+            }
+            Attr::Red | Attr::Green | Attr::Blue | Attr::White | Attr::Amber | Attr::Uv | Attr::ColorWheel => Kind::Color,
+            Attr::Pan | Attr::Tilt | Attr::PanFine | Attr::TiltFine => Kind::Position,
+            Attr::Zoom | Attr::Strobe | Attr::Gobo | Attr::Prism | Attr::Iris | Attr::Focus | Attr::Frost => Kind::Beam,
         }
     }
 
     /// Attribute, die vom Grand Master skaliert werden.
     pub fn is_intensity_like(self) -> bool {
-        matches!(self.kind(), Kind::Intensity | Kind::Color)
+        matches!(self.kind(), Kind::Intensity) || matches!(self, Attr::Red | Attr::Green | Attr::Blue | Attr::White | Attr::Amber | Attr::Uv)
     }
 }
 
@@ -155,6 +179,32 @@ pub fn import_ofl(json: &str) -> Result<Vec<FixtureType>, String> {
             "Pan" | "PanContinuous" => Some(Attr::Pan),
             "Tilt" | "TiltContinuous" => Some(Attr::Tilt),
             "Zoom" => Some(Attr::Zoom),
+            "ShutterStrobe" => Some(Attr::Strobe),
+            "WheelSlot" | "WheelShake" | "WheelSlotRotation" | "WheelRotation" => {
+                let n = channel.to_lowercase();
+                if n.contains("gobo") {
+                    Some(Attr::Gobo)
+                } else if n.contains("color") || n.contains("colour") {
+                    Some(Attr::ColorWheel)
+                } else {
+                    None
+                }
+            }
+            "Prism" => Some(Attr::Prism),
+            "Iris" => Some(Attr::Iris),
+            "Focus" => Some(Attr::Focus),
+            "Frost" => Some(Attr::Frost),
+            _ => None,
+        }
+    };
+    // Feinkanal-Alias eines Pan/Tilt-Kanals ("Pan fine") -> 16-Bit-Attribut.
+    let fine_of = |channel: &str| -> Option<Attr> {
+        let (base, _) = v["availableChannels"].as_object()?.iter().find(|(_, d)| {
+            d["fineChannelAliases"].as_array().is_some_and(|a| a.iter().any(|x| x.as_str() == Some(channel)))
+        })?;
+        match attr_of(base)? {
+            Attr::Pan => Some(Attr::PanFine),
+            Attr::Tilt => Some(Attr::TiltFine),
             _ => None,
         }
     };
@@ -168,7 +218,8 @@ pub fn import_ofl(json: &str) -> Result<Vec<FixtureType>, String> {
                 .unwrap_or_default()
                 .iter()
                 .map(|c| {
-                    let a = attr_of(c.as_str()?).filter(|a| !used.contains(a))?;
+                    let c = c.as_str()?;
+                    let a = attr_of(c).or_else(|| fine_of(c)).filter(|a| !used.contains(a))?;
                     used.push(a);
                     Some(a)
                 })
@@ -194,6 +245,11 @@ pub struct Fixture {
     pub universe: u16,
     /// 1-basiert
     pub address: u16,
+    /// Position im Stage-Layout (0..1); (0, 0) = noch nicht platziert.
+    #[serde(default)]
+    pub x: f32,
+    #[serde(default)]
+    pub y: f32,
 }
 
 #[cfg(test)]

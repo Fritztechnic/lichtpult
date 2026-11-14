@@ -3,6 +3,7 @@
 use crate::fixture::{Attr, Fixture, FixtureType, Kind, builtin_types};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::{Duration, Instant};
 
 pub const CHANNELS: usize = 512;
 pub type Frame = [u8; CHANNELS];
@@ -26,7 +27,95 @@ pub struct Palette {
 pub struct Cue {
     pub name: String,
     pub fade: f32,
+    /// Auto-Follow: Sekunden nach Ende des Fades bis zum nächsten Cue.
+    #[serde(default)]
+    pub follow: Option<f32>,
     pub values: Values,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Cuelist {
+    pub name: String,
+    pub cues: Vec<Cue>,
+    /// Nach dem letzten Cue wieder bei Cue 1 beginnen (Chase).
+    #[serde(default)]
+    pub looped: bool,
+}
+
+impl Cuelist {
+    pub fn new(name: impl Into<String>) -> Self {
+        Cuelist { name: name.into(), cues: vec![], looped: false }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum Shape {
+    Sine,
+    Triangle,
+    Saw,
+    Square,
+}
+
+impl Shape {
+    pub const ALL: [Shape; 4] = [Shape::Sine, Shape::Triangle, Shape::Saw, Shape::Square];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Shape::Sine => "Sinus",
+            Shape::Triangle => "Dreieck",
+            Shape::Saw => "Sägezahn",
+            Shape::Square => "Rechteck",
+        }
+    }
+
+    /// Phase 0..1 -> 0..1
+    fn wave(self, p: f32) -> f32 {
+        let p = p.rem_euclid(1.0);
+        match self {
+            Shape::Sine => 0.5 - 0.5 * (p * std::f32::consts::TAU).cos(),
+            Shape::Triangle => 1.0 - (2.0 * p - 1.0).abs(),
+            Shape::Saw => p,
+            Shape::Square => (p < 0.5) as u8 as f32,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum Target {
+    /// Dimmer (oder Farbkanäle ohne Dimmer) pulsieren.
+    Intensity,
+    /// Regenbogen über die RGB-Kanäle.
+    Color,
+    /// Kreisbewegung um die Grundposition.
+    Position,
+}
+
+impl Target {
+    pub const ALL: [Target; 3] = [Target::Intensity, Target::Color, Target::Position];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Target::Intensity => "Intensität",
+            Target::Color => "Regenbogen",
+            Target::Position => "Kreis",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Effect {
+    pub name: String,
+    pub target: Target,
+    pub shape: Shape,
+    /// Zyklen pro Sekunde
+    pub rate: f32,
+    /// Stärke (Tiefe bzw. Radius), 0..255
+    pub size: u8,
+    /// Phasenversatz über die Fixtures, 0..1 (1 = ein voller Zyklus verteilt)
+    pub spread: f32,
+    pub ids: Vec<u32>,
+    #[serde(skip)]
+    pub running: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -37,7 +126,13 @@ pub struct Show {
     pub fixtures: Vec<Fixture>,
     pub groups: Vec<Group>,
     pub palettes: Vec<Palette>,
+    /// Altes Format (eine Cuelist); wird beim Laden nach `lists` übernommen.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cues: Vec<Cue>,
+    #[serde(default)]
+    pub lists: Vec<Cuelist>,
+    #[serde(default)]
+    pub effects: Vec<Effect>,
 }
 
 impl Default for Show {
@@ -49,6 +144,8 @@ impl Default for Show {
             groups: vec![],
             palettes: vec![],
             cues: vec![],
+            lists: vec![Cuelist::new("Cuelist 1")],
+            effects: vec![],
         }
     }
 }
@@ -66,15 +163,30 @@ impl Show {
     pub fn range(&self, f: &Fixture) -> std::ops::Range<u16> {
         f.address..f.address + self.channels(f).len() as u16
     }
+
+    /// Altes Format übernehmen und mindestens eine Cuelist sicherstellen.
+    fn normalize(&mut self) {
+        if self.lists.is_empty() {
+            self.lists.push(Cuelist::new("Cuelist 1"));
+        }
+        if !self.cues.is_empty() {
+            self.lists[0].cues.append(&mut self.cues);
+        }
+    }
 }
 
 /// Alles, was ein Bedienelement (UI, MIDI, Pult) tun kann.
-/// Hardware-Controller werden später auf diese Aktionen abgebildet.
+/// Hardware-Controller werden auf diese Aktionen abgebildet.
 #[derive(Clone, Debug)]
 pub enum Action {
     AddTypes(Vec<FixtureType>),
     Select(u32),
     Toggle(u32),
+    /// Auswahl um alle Fixtures mit ID von..=bis erweitern.
+    SelectRange(u32, u32),
+    /// Fixture-IDs ersetzen die Auswahl.
+    SelectIds(Vec<u32>),
+    Deselect(u32),
     SelectGroup(usize),
     SelectAll,
     ClearSelection,
@@ -84,14 +196,26 @@ pub enum Action {
     RecordPalette(Kind),
     ApplyPalette(usize),
     RecordCue,
-    Go,
-    Back,
+    /// Nächsten Cue der Cuelist starten.
+    Go(usize),
+    Back(usize),
+    /// Cuelist ausschalten.
+    ReleaseList(usize),
+    /// Cuelist-Fader (0..255), skaliert Intensitäten.
+    SetLevel(usize, u8),
+    /// Cue der aktiven Cuelist anspringen.
     GotoCue(usize),
     SetCueFade(usize, f32),
+    SetCueFollow(usize, Option<f32>),
     DeleteCue(usize),
     RenameCue(usize, String),
     /// Programmer-Werte in den Cue übernehmen.
     UpdateCue(usize),
+    SelectList(usize),
+    AddList,
+    DeleteList(usize),
+    RenameList(usize, String),
+    SetLooped(usize, bool),
     RenameGroup(usize, String),
     DeleteGroup(usize),
     /// Gruppe mit der aktuellen Auswahl überschreiben.
@@ -104,53 +228,76 @@ pub enum Action {
     ReleaseAttr(Attr),
     RenameFixture(u32, String),
     SetPatch { id: u32, universe: u16, address: u16 },
+    SetPosition(u32, f32, f32),
+    /// Neuen Effekt für die aktuelle Auswahl anlegen.
+    AddEffect(Target, Shape),
+    SetEffect(usize, Effect),
+    DeleteEffect(usize),
+    ToggleEffect(usize),
+    StopEffects,
     Blackout(bool),
     Master(u8),
     AddFixtures { ty: usize, count: u16, universe: u16, address: u16 },
     RemoveFixture(u32),
+    Undo,
+    Redo,
 }
 
-pub struct Engine {
-    pub show: Show,
-    pub selection: BTreeSet<u32>,
-    pub programmer: Values,
-    pub master: u8,
-    pub blackout: bool,
+impl Action {
+    /// Verändert die gespeicherte Show (rückgängig-machbar).
+    fn edits_show(&self) -> bool {
+        use Action::*;
+        matches!(
+            self,
+            AddTypes(_)
+                | RecordGroup
+                | RecordPalette(_)
+                | RecordCue
+                | SetCueFade(..)
+                | SetCueFollow(..)
+                | DeleteCue(_)
+                | RenameCue(..)
+                | UpdateCue(_)
+                | AddList
+                | DeleteList(_)
+                | RenameList(..)
+                | SetLooped(..)
+                | RenameGroup(..)
+                | DeleteGroup(_)
+                | UpdateGroup(_)
+                | RenamePalette(..)
+                | DeletePalette(_)
+                | UpdatePalette(_)
+                | RenameFixture(..)
+                | SetPatch { .. }
+                | SetPosition(..)
+                | AddEffect(..)
+                | SetEffect(..)
+                | DeleteEffect(_)
+                | AddFixtures { .. }
+                | RemoveFixture(_)
+        )
+    }
+}
+
+/// Laufzeitzustand einer Cuelist.
+#[derive(Clone)]
+pub struct Player {
     pub cue: Option<usize>,
-    pub fade_time: f32,
-    fade_t: f32,
+    pub level: u8,
     from: Values,
     to: Values,
-    pub frames: BTreeMap<u16, Frame>,
+    fade_time: f32,
+    fade_t: f32,
+    order: u64,
 }
 
-fn get(v: &Values, id: u32, a: Attr) -> u8 {
-    v.get(&id).and_then(|m| m.get(&a)).copied().unwrap_or(0)
-}
-
-impl Engine {
-    pub fn new(show: Show) -> Self {
-        Engine {
-            show,
-            selection: BTreeSet::new(),
-            programmer: Values::new(),
-            master: 255,
-            blackout: false,
-            cue: None,
-            fade_time: 0.0,
-            fade_t: 0.0,
-            from: Values::new(),
-            to: Values::new(),
-            frames: BTreeMap::new(),
-        }
+impl Player {
+    fn new() -> Self {
+        Player { cue: None, level: 255, from: Values::new(), to: Values::new(), fade_time: 0.0, fade_t: 0.0, order: 0 }
     }
 
-    pub fn load_show(&mut self, show: Show) {
-        *self = Engine::new(show);
-    }
-
-    /// Zustand der Cue-Liste inkl. laufendem Fade.
-    pub fn playback_values(&self) -> Values {
+    fn values(&self) -> Values {
         let k = if self.fade_time <= 0.0 { 1.0 } else { (self.fade_t / self.fade_time).min(1.0) };
         if k >= 1.0 {
             return self.to.clone();
@@ -164,11 +311,109 @@ impl Engine {
         }
         out
     }
+}
+
+pub struct Engine {
+    pub show: Show,
+    pub selection: BTreeSet<u32>,
+    pub programmer: Values,
+    pub master: u8,
+    pub blackout: bool,
+    /// Aktive (bearbeitete) Cuelist.
+    pub active: usize,
+    pub players: Vec<Player>,
+    fx_t: f32,
+    go_counter: u64,
+    undo: Vec<Show>,
+    redo: Vec<Show>,
+    last_edit: Option<(std::mem::Discriminant<Action>, Instant)>,
+    pub frames: BTreeMap<u16, Frame>,
+}
+
+fn get(v: &Values, id: u32, a: Attr) -> u8 {
+    v.get(&id).and_then(|m| m.get(&a)).copied().unwrap_or(0)
+}
+
+fn hue_rgb(h: f32) -> [f32; 3] {
+    let h = h.rem_euclid(1.0) * 6.0;
+    let x = 1.0 - (h % 2.0 - 1.0).abs();
+    match h as u32 {
+        0 => [1.0, x, 0.0],
+        1 => [x, 1.0, 0.0],
+        2 => [0.0, 1.0, x],
+        3 => [0.0, x, 1.0],
+        4 => [x, 0.0, 1.0],
+        _ => [1.0, 0.0, x],
+    }
+}
+
+impl Engine {
+    pub fn new(mut show: Show) -> Self {
+        show.normalize();
+        let n = show.lists.len();
+        Engine {
+            show,
+            selection: BTreeSet::new(),
+            programmer: Values::new(),
+            master: 255,
+            blackout: false,
+            active: 0,
+            players: vec![Player::new(); n],
+            fx_t: 0.0,
+            go_counter: 0,
+            undo: vec![],
+            redo: vec![],
+            last_edit: None,
+            frames: BTreeMap::new(),
+        }
+    }
+
+    pub fn load_show(&mut self, show: Show) {
+        *self = Engine::new(show);
+    }
+
+    /// Aktive Cuelist.
+    pub fn list(&self) -> &Cuelist {
+        &self.show.lists[self.active]
+    }
+
+    /// Aktueller Cue der aktiven Cuelist.
+    pub fn cue(&self) -> Option<usize> {
+        self.players[self.active].cue
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo.is_empty()
+    }
+
+    /// Zusammengeführter Zustand aller Cuelists: Intensitäten HTP, alles andere LTP.
+    pub fn playback_values(&self) -> Values {
+        let mut order: Vec<&Player> = self.players.iter().collect();
+        order.sort_by_key(|p| p.order);
+        let mut out = Values::new();
+        for p in order {
+            for (id, attrs) in p.values() {
+                for (a, v) in attrs {
+                    let slot = out.entry(id).or_default().entry(a).or_insert(0);
+                    if a.is_intensity_like() {
+                        *slot = (*slot).max((v as u16 * p.level as u16 / 255) as u8);
+                    } else {
+                        *slot = v;
+                    }
+                }
+            }
+        }
+        out
+    }
 
     /// Tracking: Cue-Zustand = alle Änderungen bis einschließlich Cue `i`.
-    fn state_at(&self, i: usize) -> Values {
+    fn state_at(&self, l: usize, i: usize) -> Values {
         let mut out = Values::new();
-        for cue in &self.show.cues[..=i] {
+        for cue in &self.show.lists[l].cues[..=i] {
             for (&id, attrs) in &cue.values {
                 out.entry(id).or_default().extend(attrs);
             }
@@ -176,19 +421,45 @@ impl Engine {
         out
     }
 
-    fn goto(&mut self, cue: Option<usize>) {
-        self.from = self.playback_values();
-        self.to = cue.map(|i| self.state_at(i)).unwrap_or_default();
-        self.fade_time = cue.map_or(0.0, |i| self.show.cues[i].fade);
-        self.fade_t = 0.0;
-        self.cue = cue;
+    fn goto(&mut self, l: usize, cue: Option<usize>) {
+        let from = self.players[l].values();
+        let to = cue.map(|i| self.state_at(l, i)).unwrap_or_default();
+        let fade = cue.map_or(0.0, |i| self.show.lists[l].cues[i].fade);
+        self.go_counter += 1;
+        let p = &mut self.players[l];
+        (p.from, p.to, p.fade_time, p.fade_t, p.cue, p.order) = (from, to, fade, 0.0, cue, self.go_counter);
+    }
+
+    fn go_next(&mut self, l: usize) {
+        let len = self.show.lists[l].cues.len();
+        let next = self.players[l].cue.map_or(0, |c| c + 1);
+        if next < len {
+            self.goto(l, Some(next));
+        } else if self.show.lists[l].looped && len > 0 {
+            self.goto(l, Some(0));
+        }
     }
 
     /// Cue-Zustand ohne Fade neu berechnen (nach Änderungen an Cues).
-    fn refresh_playback(&mut self) {
-        if let Some(c) = self.cue {
-            self.to = self.state_at(c);
-            self.fade_time = 0.0;
+    fn refresh_playback(&mut self, l: usize) {
+        if let Some(c) = self.players[l].cue {
+            let to = self.state_at(l, c);
+            let p = &mut self.players[l];
+            p.to = to;
+            p.fade_time = 0.0;
+        }
+    }
+
+    /// Spieler an die Anzahl Cuelists/Cues anpassen (nach Undo, Laden, Löschen).
+    fn sync_players(&mut self) {
+        self.players.resize(self.show.lists.len(), Player::new());
+        self.active = self.active.min(self.show.lists.len() - 1);
+        for l in 0..self.players.len() {
+            match self.players[l].cue {
+                Some(c) if c >= self.show.lists[l].cues.len() => self.goto(l, None),
+                Some(_) => self.refresh_playback(l),
+                None => {}
+            }
         }
     }
 
@@ -216,8 +487,49 @@ impl Engine {
         self.frames.get(&f.universe).and_then(|fr| fr.get(f.address as usize - 1 + i)).copied().unwrap_or(0)
     }
 
+    fn snapshot(&mut self, action: &Action) {
+        let now = Instant::now();
+        let kind = std::mem::discriminant(action);
+        // Gleiche Aktion in schneller Folge (z. B. Ziehen eines Werts) = ein Undo-Schritt.
+        let merge = matches!(self.last_edit, Some((k, t)) if k == kind && now - t < Duration::from_millis(800));
+        self.last_edit = Some((kind, now));
+        if !merge {
+            self.undo.push(self.show.clone());
+            if self.undo.len() > 100 {
+                self.undo.remove(0);
+            }
+        }
+        self.redo.clear();
+    }
+
+    fn restore(&mut self, mut show: Show) {
+        for (e, old) in show.effects.iter_mut().zip(&self.show.effects) {
+            e.running = old.running;
+        }
+        self.show = show;
+        self.sync_players();
+    }
+
     pub fn apply(&mut self, action: Action) {
+        if action.edits_show() {
+            self.snapshot(&action);
+        }
+        let l = self.active;
         match action {
+            Action::Undo => {
+                if let Some(prev) = self.undo.pop() {
+                    self.redo.push(self.show.clone());
+                    self.restore(prev);
+                    self.last_edit = None;
+                }
+            }
+            Action::Redo => {
+                if let Some(next) = self.redo.pop() {
+                    self.undo.push(self.show.clone());
+                    self.restore(next);
+                    self.last_edit = None;
+                }
+            }
             Action::Select(id) => {
                 self.selection = BTreeSet::from([id]);
             }
@@ -225,6 +537,16 @@ impl Engine {
                 if !self.selection.remove(&id) {
                     self.selection.insert(id);
                 }
+            }
+            Action::Deselect(id) => {
+                self.selection.remove(&id);
+            }
+            Action::SelectRange(a, b) => {
+                let (a, b) = (a.min(b), a.max(b));
+                self.selection.extend(self.show.fixtures.iter().map(|f| f.id).filter(|id| (a..=b).contains(id)));
+            }
+            Action::SelectIds(ids) => {
+                self.selection = self.show.fixtures.iter().map(|f| f.id).filter(|id| ids.contains(id)).collect();
             }
             Action::SelectGroup(i) => {
                 if let Some(g) = self.show.groups.get(i) {
@@ -308,6 +630,11 @@ impl Engine {
                     f.address = address.clamp(1, (CHANNELS as u16 + 1).saturating_sub(width).max(1));
                 }
             }
+            Action::SetPosition(id, x, y) => {
+                if let Some(f) = self.show.fixtures.iter_mut().find(|f| f.id == id) {
+                    (f.x, f.y) = (x.clamp(0.02, 0.98), y.clamp(0.02, 0.98));
+                }
+            }
             Action::ApplyPalette(i) => {
                 if let Some(p) = self.show.palettes.get(i).cloned() {
                     for (a, v) in p.values {
@@ -317,57 +644,136 @@ impl Engine {
             }
             Action::RecordCue => {
                 if !self.programmer.is_empty() {
-                    let name = format!("Cue {}", self.show.cues.len() + 1);
-                    self.show.cues.push(Cue { name, fade: 2.0, values: self.programmer.clone() });
+                    let name = format!("Cue {}", self.show.lists[l].cues.len() + 1);
+                    let values = self.programmer.clone();
+                    self.show.lists[l].cues.push(Cue { name, fade: 2.0, follow: None, values });
                 }
             }
-            Action::Go => {
-                let next = self.cue.map_or(0, |c| c + 1);
-                if next < self.show.cues.len() {
-                    self.goto(Some(next));
+            Action::Go(i) => {
+                if i < self.players.len() {
+                    self.go_next(i);
                 }
             }
-            Action::Back => match self.cue {
-                Some(0) => self.goto(None),
-                Some(c) => self.goto(Some(c - 1)),
-                None => {}
-            },
+            Action::Back(i) => {
+                if i < self.players.len() {
+                    match self.players[i].cue {
+                        Some(0) => self.goto(i, None),
+                        Some(c) => self.goto(i, Some(c - 1)),
+                        None => {}
+                    }
+                }
+            }
+            Action::ReleaseList(i) => {
+                if i < self.players.len() {
+                    self.goto(i, None);
+                }
+            }
+            Action::SetLevel(i, v) => {
+                if let Some(p) = self.players.get_mut(i) {
+                    p.level = v;
+                }
+            }
             Action::GotoCue(i) => {
-                if i < self.show.cues.len() {
-                    self.goto(Some(i));
+                if i < self.show.lists[l].cues.len() {
+                    self.goto(l, Some(i));
                 }
             }
             Action::SetCueFade(i, t) => {
-                if let Some(c) = self.show.cues.get_mut(i) {
+                if let Some(c) = self.show.lists[l].cues.get_mut(i) {
                     c.fade = t.max(0.0);
                 }
             }
+            Action::SetCueFollow(i, t) => {
+                if let Some(c) = self.show.lists[l].cues.get_mut(i) {
+                    c.follow = t.map(|t| t.max(0.0));
+                }
+            }
             Action::DeleteCue(i) => {
-                if i < self.show.cues.len() {
-                    self.show.cues.remove(i);
-                    match self.cue {
-                        Some(c) if c == i => self.goto(None),
+                if i < self.show.lists[l].cues.len() {
+                    self.show.lists[l].cues.remove(i);
+                    match self.players[l].cue {
+                        Some(c) if c == i => self.goto(l, None),
                         Some(c) if c > i => {
-                            self.cue = Some(c - 1);
-                            self.refresh_playback();
+                            self.players[l].cue = Some(c - 1);
+                            self.refresh_playback(l);
                         }
                         _ => {}
                     }
                 }
             }
             Action::RenameCue(i, n) => {
-                if let Some(c) = self.show.cues.get_mut(i) {
+                if let Some(c) = self.show.lists[l].cues.get_mut(i) {
                     c.name = n;
                 }
             }
             Action::UpdateCue(i) => {
-                if let Some(c) = self.show.cues.get_mut(i) {
+                if let Some(c) = self.show.lists[l].cues.get_mut(i) {
                     for (&id, attrs) in &self.programmer {
                         c.values.entry(id).or_default().extend(attrs);
                     }
-                    self.refresh_playback();
+                    self.refresh_playback(l);
                 }
             }
+            Action::SelectList(i) => {
+                if i < self.show.lists.len() {
+                    self.active = i;
+                }
+            }
+            Action::AddList => {
+                let name = format!("Cuelist {}", self.show.lists.len() + 1);
+                self.show.lists.push(Cuelist::new(name));
+                self.sync_players();
+                self.active = self.show.lists.len() - 1;
+            }
+            Action::DeleteList(i) => {
+                if self.show.lists.len() > 1 && i < self.show.lists.len() {
+                    self.show.lists.remove(i);
+                    self.players.remove(i);
+                    self.active = self.active.min(self.show.lists.len() - 1);
+                }
+            }
+            Action::RenameList(i, n) => {
+                if let Some(c) = self.show.lists.get_mut(i) {
+                    c.name = n;
+                }
+            }
+            Action::SetLooped(i, b) => {
+                if let Some(c) = self.show.lists.get_mut(i) {
+                    c.looped = b;
+                }
+            }
+            Action::AddEffect(target, shape) => {
+                if !self.selection.is_empty() {
+                    let n = self.show.effects.len() + 1;
+                    self.show.effects.push(Effect {
+                        name: format!("{} {n}", target.name()),
+                        target,
+                        shape,
+                        rate: 0.5,
+                        size: if target == Target::Color { 255 } else { 128 },
+                        spread: 1.0,
+                        ids: self.selection.iter().copied().collect(),
+                        running: true,
+                    });
+                }
+            }
+            Action::SetEffect(i, e) => {
+                if let Some(slot) = self.show.effects.get_mut(i) {
+                    let running = slot.running;
+                    *slot = Effect { running, ..e };
+                }
+            }
+            Action::DeleteEffect(i) => {
+                if i < self.show.effects.len() {
+                    self.show.effects.remove(i);
+                }
+            }
+            Action::ToggleEffect(i) => {
+                if let Some(e) = self.show.effects.get_mut(i) {
+                    e.running = !e.running;
+                }
+            }
+            Action::StopEffects => self.show.effects.iter_mut().for_each(|e| e.running = false),
             Action::Blackout(b) => self.blackout = b,
             Action::Master(m) => self.master = m,
             Action::AddFixtures { ty, count, universe, address } => {
@@ -379,12 +785,15 @@ impl Engine {
                     if width == 0 || address + width - 1 > CHANNELS as u32 {
                         break;
                     }
+                    let idx = self.show.fixtures.len();
                     self.show.fixtures.push(Fixture {
                         id: next_id,
                         name: format!("{} {next_id}", name.split(" (").next().unwrap_or(&name)),
                         ty,
                         universe,
                         address: address as u16,
+                        x: 0.1 + 0.8 * ((idx % 10) as f32 / 9.0),
+                        y: 0.2 + 0.15 * (idx / 10) as f32,
                     });
                     next_id += 1;
                 }
@@ -402,6 +811,9 @@ impl Engine {
                 self.programmer.remove(&id);
                 for g in &mut self.show.groups {
                     g.ids.retain(|&x| x != id);
+                }
+                for e in &mut self.show.effects {
+                    e.ids.retain(|&x| x != id);
                 }
             }
         }
@@ -423,33 +835,104 @@ impl Engine {
         out
     }
 
+    fn follow_cues(&mut self) {
+        for l in 0..self.players.len() {
+            let p = &self.players[l];
+            let Some(c) = p.cue else { continue };
+            if let Some(f) = self.show.lists[l].cues[c].follow {
+                if p.fade_t >= p.fade_time + f {
+                    self.go_next(l);
+                }
+            }
+        }
+    }
+
+    /// Wellenwerte (Phase 0..1) der laufenden Effekte für ein Fixture.
+    fn effects_for(&self, id: u32) -> Vec<(&Effect, f32)> {
+        self.show
+            .effects
+            .iter()
+            .filter(|e| e.running)
+            .filter_map(|e| {
+                let n = e.ids.iter().position(|&x| x == id)?;
+                let phase = self.fx_t * e.rate + e.spread * n as f32 / e.ids.len().max(1) as f32;
+                Some((e, phase))
+            })
+            .collect()
+    }
+
+    /// Wert eines Attributs nach Programmer/Playback und Effekten (0..255, mit Nachkommaanteil).
+    fn eval(&self, f: &Fixture, a: Attr, play: &Values, fx: &[(&Effect, f32)]) -> f32 {
+        let mut v = self.programmer.get(&f.id).and_then(|m| m.get(&a)).copied().unwrap_or_else(|| get(play, f.id, a)) as f32;
+        for &(e, phase) in fx {
+            let depth = e.size as f32 / 255.0;
+            match e.target {
+                Target::Intensity => {
+                    let dim = if self.show.has(f, Attr::Dimmer) { a == Attr::Dimmer } else { a.kind() == Kind::Color && a.is_intensity_like() };
+                    if dim {
+                        v *= 1.0 - depth * (1.0 - e.shape.wave(phase));
+                    }
+                }
+                Target::Color => {
+                    let c = hue_rgb(phase);
+                    let sat = depth;
+                    let idx = match a {
+                        Attr::Red => Some(0),
+                        Attr::Green => Some(1),
+                        Attr::Blue => Some(2),
+                        _ => None,
+                    };
+                    if let Some(i) = idx {
+                        v = 255.0 * (1.0 - sat + sat * c[i]);
+                    }
+                }
+                Target::Position => {
+                    let r = depth * 127.0;
+                    let ang = phase * std::f32::consts::TAU;
+                    match a {
+                        Attr::Pan => v += r * ang.cos(),
+                        Attr::Tilt => v += r * ang.sin(),
+                        _ => {}
+                    }
+                }
+            }
+        }
+        v.clamp(0.0, 255.0)
+    }
+
     /// Schritt `dt` Sekunden weiter und DMX-Frames neu berechnen.
     pub fn tick(&mut self, dt: f32) {
-        self.fade_t += dt;
+        for p in &mut self.players {
+            p.fade_t += dt;
+        }
+        self.fx_t += dt;
+        self.follow_cues();
         let play = self.playback_values();
-        self.frames.clear();
+        let mut frames: BTreeMap<u16, Frame> = BTreeMap::new();
         for f in &self.show.fixtures {
-            let frame = self.frames.entry(f.universe).or_insert([0; CHANNELS]);
+            let fx = self.effects_for(f.id);
+            let frame = frames.entry(f.universe).or_insert([0; CHANNELS]);
             for (i, slot) in self.show.channels(f).iter().enumerate() {
                 let Some(a) = *slot else { continue };
-                let v = self
-                    .programmer
-                    .get(&f.id)
-                    .and_then(|m| m.get(&a))
-                    .copied()
-                    .unwrap_or_else(|| get(&play, f.id, a));
+                let v = match a {
+                    Attr::PanFine => self.eval(f, Attr::Pan, &play, &fx).fract() * 255.0,
+                    Attr::TiltFine => self.eval(f, Attr::Tilt, &play, &fx).fract() * 255.0,
+                    Attr::Pan | Attr::Tilt => self.eval(f, a, &play, &fx).floor(),
+                    _ => self.eval(f, a, &play, &fx).round(),
+                };
                 let v = if self.blackout && a.is_intensity_like() {
-                    0
+                    0.0
                 } else if a.is_intensity_like() {
-                    (v as u16 * self.master as u16 / 255) as u8
+                    (v * self.master as f32 / 255.0).round()
                 } else {
                     v
                 };
                 if let Some(out) = frame.get_mut(f.address as usize - 1 + i) {
-                    *out = v;
+                    *out = v as u8;
                 }
             }
         }
+        self.frames = frames;
     }
 }
 
@@ -495,12 +978,12 @@ mod tests {
         e.apply(Action::SetAttr(Attr::Red, 50));
         e.apply(Action::RecordCue);
         e.apply(Action::ClearProgrammer);
-        e.apply(Action::Go);
+        e.apply(Action::Go(0));
         e.tick(1.0);
         assert_eq!(e.frames[&1][0], 50); // halber Fade (2 s)
         e.tick(5.0);
         assert_eq!(e.frames[&1][0], 100);
-        e.apply(Action::Go);
+        e.apply(Action::Go(0));
         e.tick(5.0);
         assert_eq!(e.frames[&1][0], 100); // Dimmer wird getrackt
         assert_eq!(e.frames[&1][1], 50);
@@ -522,13 +1005,13 @@ mod tests {
         e.apply(Action::RecordCue);
         e.apply(Action::ReleaseAttr(Attr::Red));
         assert!(e.programmer.is_empty());
-        e.apply(Action::Go);
+        e.apply(Action::Go(0));
         e.apply(Action::SetAttr(Attr::Red, 7));
         e.apply(Action::UpdateCue(0));
         e.tick(0.0);
         assert_eq!(e.frames[&1][1], 7);
         e.apply(Action::DeleteCue(0));
-        assert_eq!(e.cue, None);
+        assert_eq!(e.cue(), None);
     }
 
     #[test]
@@ -543,5 +1026,103 @@ mod tests {
         let mut e = engine();
         e.apply(Action::AddFixtures { ty: 3, count: 1, universe: 1, address: 3 });
         assert_eq!(e.conflicts().len(), 3); // 3–6 überlappt 1–4 und 5–8
+    }
+
+    #[test]
+    fn lists_merge_htp_and_levels() {
+        let mut e = engine();
+        e.apply(Action::SelectAll);
+        e.apply(Action::SetAttr(Attr::Dimmer, 200));
+        e.apply(Action::RecordCue);
+        e.apply(Action::SetCueFade(0, 0.0));
+        e.apply(Action::AddList);
+        e.apply(Action::SetAttr(Attr::Dimmer, 100));
+        e.apply(Action::RecordCue);
+        e.apply(Action::SetCueFade(0, 0.0));
+        e.apply(Action::ClearProgrammer);
+        e.apply(Action::Go(0));
+        e.apply(Action::Go(1));
+        e.tick(0.0);
+        assert_eq!(e.frames[&1][0], 200); // HTP
+        e.apply(Action::SetLevel(0, 51));
+        e.tick(0.0);
+        assert_eq!(e.frames[&1][0], 100);
+        e.apply(Action::ReleaseList(1));
+        e.tick(0.0);
+        assert_eq!(e.frames[&1][0], 40); // 200 * 51/255
+    }
+
+    #[test]
+    fn auto_follow_loops() {
+        let mut e = engine();
+        e.apply(Action::SelectAll);
+        for v in [10, 20] {
+            e.apply(Action::SetAttr(Attr::Dimmer, v));
+            e.apply(Action::RecordCue);
+        }
+        e.apply(Action::ClearProgrammer);
+        for i in 0..2 {
+            e.apply(Action::SetCueFade(i, 0.0));
+            e.apply(Action::SetCueFollow(i, Some(1.0)));
+        }
+        e.apply(Action::SetLooped(0, true));
+        e.apply(Action::Go(0));
+        e.tick(0.0);
+        assert_eq!(e.frames[&1][0], 10);
+        e.tick(1.1);
+        assert_eq!(e.frames[&1][0], 20);
+        e.tick(1.1);
+        assert_eq!(e.frames[&1][0], 10); // Loop
+    }
+
+    #[test]
+    fn effects_modulate_and_undo_restores() {
+        let mut e = engine();
+        e.apply(Action::SelectAll);
+        e.apply(Action::SetAttr(Attr::Dimmer, 200));
+        e.apply(Action::AddEffect(Target::Intensity, Shape::Square));
+        e.show.effects[0].spread = 0.0;
+        e.show.effects[0].size = 255;
+        e.show.effects[0].rate = 1.0;
+        e.tick(0.0);
+        assert_eq!(e.frames[&1][0], 200); // Rechteck: erste Hälfte an
+        e.tick(0.6);
+        assert_eq!(e.frames[&1][0], 0);
+        e.apply(Action::StopEffects);
+        e.tick(0.0);
+        assert_eq!(e.frames[&1][0], 200);
+
+        e.apply(Action::DeleteEffect(0));
+        assert!(e.show.effects.is_empty());
+        e.apply(Action::Undo);
+        assert_eq!(e.show.effects.len(), 1);
+        e.apply(Action::Redo);
+        assert!(e.show.effects.is_empty());
+    }
+
+    #[test]
+    fn pan_fine_channel_gets_fraction() {
+        let mut e = Engine::new(Show::default());
+        e.show.types.push(FixtureType {
+            name: "Head16".into(),
+            channels: vec![Some(Attr::Pan), Some(Attr::PanFine)],
+        });
+        e.apply(Action::AddFixtures { ty: e.show.types.len() - 1, count: 1, universe: 1, address: 1 });
+        e.apply(Action::SelectAll);
+        e.apply(Action::SetAttr(Attr::Pan, 100));
+        e.apply(Action::AddEffect(Target::Position, Shape::Sine));
+        e.show.effects[0].size = 10;
+        e.show.effects[0].rate = 1.0;
+        e.tick(0.1);
+        assert_ne!(e.frames[&1][1], 0);
+    }
+
+    #[test]
+    fn range_selection() {
+        let mut e = engine();
+        e.apply(Action::SelectRange(2, 1));
+        assert_eq!(e.selection.len(), 2);
+        e.apply(Action::Deselect(1));
+        assert_eq!(e.selection.len(), 1);
     }
 }

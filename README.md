@@ -22,14 +22,18 @@ Jeder Modus wird ein eigener Typ. Fine-Kanäle (16 Bit) und noch nicht unterstü
 belegen ihre DMX-Adresse, bleiben aber bei 0.
 
 ## Entwicklung
-`LICHTPULT_SHOT=/tmp/x.ppm [LICHTPULT_VIEW=patch|cues|output] [LICHTPULT_SELECT=1] cargo run` speichert den Fensterinhalt und beendet die App.
+`LICHTPULT_SHOT=/tmp/x.ppm [LICHTPULT_VIEW=stage|patch|output] [LICHTPULT_SELECT=1] cargo run` speichert den Fensterinhalt und beendet die App.
 
 ## Tastatur
-`Leertaste` GO · `Backspace` Back · `Esc` Auswahl löschen · `Strg/Shift`+Klick Mehrfachauswahl
+`Leertaste` GO · `Backspace` Back · `Esc` Auswahl löschen · `Strg+A` alle · `Strg+Z` / `Strg+Shift+Z` Undo/Redo · `Strg+L` Befehlszeile
+
+## Befehlszeile
+Mehrere Befehle mit `;`: `1 thru 8 @ 50` · `1 + 3 - 2 red 255` · `group 1 pal 2` · `go 2` · `back` · `release 1` · `goto 3` · `level 1 200` · `master 128` · `blackout on` · `fx 1` / `fx stop` · `record cue|group|palette color` · `undo` · `clear`
+
+## Funktionen
+Mehrere Cuelisten mit Playback-Fadern, Follow/Loop, HTP/LTP-Mischung, Effekt-Engine (Intensität/Farbe/Position), 2D-Bühnenansicht, Undo/Redo, Farbrad/Gobo/Prisma/Iris/Fokus/Frost, 16-Bit-Pan/Tilt (Fine-Kanäle aus OFL), ESP32-Art-Net→DMX-Node (`firmware/esp32-dmx`).
 
 ## Roadmap
-1. ✅ Patch, Programmer, Gruppen, Paletten, Cue-Liste mit Fades, DMX-Monitor
-2. GDTF-Import, Farbräder/Gobos/Strobe, 16-Bit-Pan/Tilt, Effekte, mehrere Cuelisten/Playbacks, Trigger/Timecode
-3. sACN, USB-DMX, MIDI/OSC-Controller, 2D-/3D-Visualizer
+GDTF-Import, sACN, MIDI/OSC-Controller, Trigger/Timecode, 3D-Visualizer
 
 Lizenz: MIT

@@ -82,7 +82,7 @@ pub fn attr_tint(a: lichtpult::fixture::Attr, accent: Color32) -> Color32 {
         White => Color32::from_rgb(245, 245, 245),
         Amber => Color32::from_rgb(255, 170, 40),
         Uv => Color32::from_rgb(150, 80, 255),
-        Pan | Tilt | Zoom | Strobe => accent,
+        _ => accent,
     }
 }
 

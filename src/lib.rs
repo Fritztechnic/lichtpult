@@ -1,6 +1,7 @@
 //! Lichtpult: Kern ohne UI. UI und (später) Hardware-Pulte steuern die
 //! `Engine` ausschließlich über `Action`s.
 
+pub mod cmd;
 pub mod engine;
 pub mod fixture;
 
@@ -113,6 +114,13 @@ mod tests {
         e.apply(engine::Action::RecordCue);
         let json = serde_json::to_string(&e.show).unwrap();
         let back: Show = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.cues[0].values[&1][&fixture::Attr::Red], 9);
+        assert_eq!(back.lists[0].cues[0].values[&1][&fixture::Attr::Red], 9);
+
+        // Altes Format (cues statt lists) wird übernommen.
+        let mut old: serde_json::Value = serde_json::from_str(&json).unwrap();
+        old["cues"] = old["lists"][0]["cues"].take();
+        old.as_object_mut().unwrap().remove("lists");
+        let migrated = Engine::new(serde_json::from_value(old).unwrap());
+        assert_eq!(migrated.list().cues.len(), 1);
     }
 }

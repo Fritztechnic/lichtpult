@@ -10,13 +10,24 @@ use theme::{Fader, caption, card, fader, tile};
 #[derive(PartialEq, Clone, Copy)]
 enum View {
     Live,
+    Stage,
     Patch,
     Output,
+}
+
+#[derive(PartialEq, Clone, Copy)]
+enum Side {
+    Cues,
+    Effects,
 }
 
 struct App {
     engine: Shared,
     view: View,
+    side: Side,
+    cmd: String,
+    cmd_error: bool,
+    fx_pick: (lichtpult::engine::Target, lichtpult::engine::Shape),
     accent: [u8; 3],
     saved_accent: [u8; 3],
     status: String,
@@ -101,8 +112,13 @@ impl App {
             view: match std::env::var("LICHTPULT_VIEW").as_deref() {
                 Ok("patch") => View::Patch,
                 Ok("output") => View::Output,
+                Ok("stage") => View::Stage,
                 _ => View::Live,
             },
+            side: if std::env::var("LICHTPULT_SIDE").as_deref() == Ok("fx") { Side::Effects } else { Side::Cues },
+            cmd: String::new(),
+            cmd_error: false,
+            fx_pick: (lichtpult::engine::Target::Intensity, lichtpult::engine::Shape::Sine),
             accent,
             saved_accent: accent,
             status: String::new(),
@@ -128,10 +144,15 @@ impl App {
         self.frames += 1;
         if self.frames == 3 && std::env::var_os("LICHTPULT_SELECT").is_some() {
             let mut e = self.engine.lock().unwrap();
-            e.apply(Action::Go);
+            e.apply(Action::Go(0));
             e.apply(Action::Select(3));
             e.apply(Action::Toggle(4));
             e.apply(Action::SetAttr(Attr::Green, 180));
+            if std::env::var("LICHTPULT_SIDE").as_deref() == Ok("fx") {
+                e.apply(Action::SelectAll);
+                e.apply(Action::AddEffect(lichtpult::engine::Target::Color, lichtpult::engine::Shape::Sine));
+                e.apply(Action::Select(3));
+            }
         }
         if self.frames == 8 {
             let ctx2 = ctx.clone();
@@ -171,7 +192,7 @@ impl App {
         ui.horizontal_centered(|ui| {
             ui.label(RichText::new("LICHTPULT").heading().strong().color(self.accent()));
             ui.add_space(16.0);
-            for (v, name) in [(View::Live, "Live"), (View::Patch, "Patch"), (View::Output, "Output")] {
+            for (v, name) in [(View::Live, "Live"), (View::Stage, "Stage"), (View::Patch, "Patch"), (View::Output, "Output")] {
                 if tile(ui, name, self.view == v, self.accent()).clicked() {
                     self.view = v;
                 }
@@ -186,6 +207,12 @@ impl App {
                 ui.spacing_mut().slider_width = 120.0;
                 if ui.add(egui::Slider::new(&mut m, 0..=255).text("Master")).changed() {
                     acts.push(Action::Master(m));
+                }
+                if ui.add_enabled(e.can_redo(), egui::Button::new("↷")).on_hover_text("Wiederholen (Strg+Shift+Z)").clicked() {
+                    acts.push(Action::Redo);
+                }
+                if ui.add_enabled(e.can_undo(), egui::Button::new("↶")).on_hover_text("Rückgängig (Strg+Z)").clicked() {
+                    acts.push(Action::Undo);
                 }
             });
         });
@@ -293,60 +320,6 @@ impl App {
         }
         ui.add_space(8.0);
         ui.label(RichText::new("Rechtsklick auf Kachel: umbenennen, aktualisieren, löschen").small().color(theme::MUTED));
-    }
-
-    /// Rechte Seite: Cue-Liste.
-    fn cue_panel(&self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
-        let accent = self.accent();
-        ui.horizontal(|ui| {
-            caption(ui, "Cues");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add_enabled(e.cue.is_some() && !e.programmer.is_empty(), egui::Button::new("Aktualisieren")).clicked() {
-                    acts.push(Action::UpdateCue(e.cue.unwrap_or(0)));
-                }
-                if ui.add_enabled(!e.programmer.is_empty(), egui::Button::new("● Aufnehmen")).clicked() {
-                    acts.push(Action::RecordCue);
-                }
-            });
-        });
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            for (i, c) in e.show.cues.iter().enumerate() {
-                let current = e.cue == Some(i);
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(if current { "▶" } else { " " }).color(accent));
-                    let r = ui.add_sized(
-                        [150.0, 30.0],
-                        egui::Button::new(RichText::new(short(&c.name, 18)).color(if current { accent } else { theme::TEXT }))
-                            .fill(if current { accent.gamma_multiply(0.16) } else { theme::RAISED })
-                            .stroke(egui::Stroke::new(if current { 1.5 } else { 1.0 }, if current { accent } else { theme::LINE })),
-                    );
-                    if r.clicked() {
-                        acts.push(Action::GotoCue(i));
-                    }
-                    r.context_menu(|ui| {
-                        let mut name = c.name.clone();
-                        if ui.text_edit_singleline(&mut name).changed() {
-                            acts.push(Action::RenameCue(i, name));
-                        }
-                        if ui.add_enabled(!e.programmer.is_empty(), egui::Button::new("Mit Programmer aktualisieren")).clicked() {
-                            acts.push(Action::UpdateCue(i));
-                            ui.close();
-                        }
-                        if ui.button("Löschen").clicked() {
-                            acts.push(Action::DeleteCue(i));
-                            ui.close();
-                        }
-                    });
-                    let mut fade = c.fade;
-                    if ui.add(egui::DragValue::new(&mut fade).speed(0.1).suffix(" s").range(0.0..=600.0)).changed() {
-                        acts.push(Action::SetCueFade(i, fade));
-                    }
-                });
-            }
-            if e.show.cues.is_empty() {
-                ui.label(RichText::new("Noch keine Cues. Werte einstellen und „Aufnehmen“ drücken.").color(theme::MUTED));
-            }
-        });
     }
 
     fn live(&self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
@@ -537,24 +510,325 @@ impl App {
         }
     }
 
-    fn playback_bar(&self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
+}
+
+impl App {
+    fn command_bar(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
         ui.horizontal_centered(|ui| {
-            if ui.button("◀ Back").clicked() {
-                acts.push(Action::Back);
+            ui.label(RichText::new("›").color(self.accent()).strong());
+            let w = (ui.available_width() - 280.0).max(200.0);
+            let r = ui.add_sized(
+                [w, 26.0],
+                egui::TextEdit::singleline(&mut self.cmd)
+                    .id(egui::Id::new("cmdline"))
+                    .hint_text("Befehl: 1 thru 8 @ 50 · red 255 · go · fx 1 · record cue   (Strg+L)"),
+            );
+            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !self.cmd.trim().is_empty() {
+                match lichtpult::cmd::parse(&self.cmd, e) {
+                    Ok(a) => {
+                        acts.extend(a);
+                        self.cmd.clear();
+                        self.cmd_error = false;
+                        self.status = "OK".into();
+                    }
+                    Err(err) => {
+                        self.cmd_error = true;
+                        self.status = err;
+                    }
+                }
+                r.request_focus();
             }
-            let go = egui::Button::new(RichText::new("GO").strong().color(Color32::BLACK)).fill(self.accent());
-            if ui.add_sized([96.0, 32.0], go).clicked() {
-                acts.push(Action::Go);
-            }
-            let cur = e.cue.and_then(|i| e.show.cues.get(i)).map_or("—", |c| c.name.as_str());
-            ui.label(format!("Aktuell: {cur}"));
-            if let Some(next) = e.show.cues.get(e.cue.map_or(0, |c| c + 1)) {
-                ui.label(RichText::new(format!("Nächste: {}", next.name)).color(theme::MUTED));
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(RichText::new(&self.status).color(theme::MUTED));
+            let color = if self.cmd_error { theme::DANGER } else { theme::MUTED };
+            ui.label(RichText::new(&self.status).color(color));
+        });
+    }
+
+    fn playbacks(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
+        let accent = self.accent();
+        egui::ScrollArea::horizontal().show(ui, |ui| {
+            ui.horizontal_centered(|ui| {
+                for (i, l) in e.show.lists.iter().enumerate() {
+                    let p = &e.players[i];
+                    let active = i == e.active;
+                    ui.vertical(|ui| {
+                        ui.set_width(150.0);
+                        let name = RichText::new(short(&l.name, 16)).color(if active { accent } else { theme::TEXT });
+                        if ui.add(egui::Label::new(name).sense(egui::Sense::click())).clicked() {
+                            acts.push(Action::SelectList(i));
+                        }
+                        let cur = p.cue.and_then(|c| l.cues.get(c)).map_or("—", |c| c.name.as_str());
+                        ui.label(RichText::new(short(cur, 20)).small().color(theme::MUTED));
+                        ui.horizontal(|ui| {
+                            if ui.button("◀").clicked() {
+                                acts.push(Action::Back(i));
+                            }
+                            let go = egui::Button::new(RichText::new("GO").strong().color(Color32::BLACK)).fill(accent);
+                            if ui.add_sized([48.0, 22.0], go).clicked() {
+                                acts.push(Action::Go(i));
+                            }
+                            if ui.button("■").on_hover_text("Freigeben").clicked() {
+                                acts.push(Action::ReleaseList(i));
+                            }
+                        });
+                        let mut lv = p.level;
+                        ui.spacing_mut().slider_width = 120.0;
+                        if ui.add(egui::Slider::new(&mut lv, 0..=255).show_value(false)).changed() {
+                            acts.push(Action::SetLevel(i, lv));
+                        }
+                    });
+                    ui.separator();
+                }
             });
         });
+    }
+
+    fn side_panel(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
+        ui.horizontal(|ui| {
+            for (s, n) in [(Side::Cues, "Cues"), (Side::Effects, "Effekte")] {
+                if tile(ui, n, self.side == s, self.accent()).clicked() {
+                    self.side = s;
+                }
+            }
+        });
+        ui.separator();
+        match self.side {
+            Side::Cues => self.cues(ui, e, acts),
+            Side::Effects => self.effects(ui, e, acts),
+        }
+    }
+
+    fn cues(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
+        let accent = self.accent();
+        ui.horizontal_wrapped(|ui| {
+            for (i, l) in e.show.lists.iter().enumerate() {
+                if tile(ui, short(&l.name, 12), i == e.active, accent).clicked() {
+                    acts.push(Action::SelectList(i));
+                }
+            }
+            if ui.button("+").on_hover_text("Neue Cueliste").clicked() {
+                acts.push(Action::AddList);
+            }
+        });
+        let list = e.list();
+        ui.horizontal(|ui| {
+            let mut name = list.name.clone();
+            if ui.add(egui::TextEdit::singleline(&mut name).desired_width(110.0)).changed() {
+                acts.push(Action::RenameList(e.active, name));
+            }
+            let mut lo = list.looped;
+            if ui.checkbox(&mut lo, "Loop").changed() {
+                acts.push(Action::SetLooped(e.active, lo));
+            }
+            if e.show.lists.len() > 1 && ui.button("🗑").on_hover_text("Liste löschen").clicked() {
+                acts.push(Action::DeleteList(e.active));
+            }
+        });
+        ui.horizontal(|ui| {
+            let cur = e.cue();
+            if ui.add_enabled(!e.programmer.is_empty(), egui::Button::new("● Aufnehmen")).clicked() {
+                acts.push(Action::RecordCue);
+            }
+            if ui.add_enabled(cur.is_some() && !e.programmer.is_empty(), egui::Button::new("Aktualisieren")).clicked() {
+                acts.push(Action::UpdateCue(cur.unwrap_or(0)));
+            }
+        });
+        ui.add_space(4.0);
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            for (i, c) in list.cues.iter().enumerate() {
+                let current = e.cue() == Some(i);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(if current { "▶" } else { " " }).color(accent));
+                    let r = ui.add_sized(
+                        [110.0, 28.0],
+                        egui::Button::new(RichText::new(short(&c.name, 14)).color(if current { accent } else { theme::TEXT }))
+                            .fill(if current { accent.gamma_multiply(0.16) } else { theme::RAISED })
+                            .stroke(egui::Stroke::new(1.0, if current { accent } else { theme::LINE })),
+                    );
+                    if r.clicked() {
+                        acts.push(Action::GotoCue(i));
+                    }
+                    r.context_menu(|ui| {
+                        let mut name = c.name.clone();
+                        if ui.text_edit_singleline(&mut name).changed() {
+                            acts.push(Action::RenameCue(i, name));
+                        }
+                        if ui.add_enabled(!e.programmer.is_empty(), egui::Button::new("Mit Programmer aktualisieren")).clicked() {
+                            acts.push(Action::UpdateCue(i));
+                            ui.close();
+                        }
+                        if ui.button("Löschen").clicked() {
+                            acts.push(Action::DeleteCue(i));
+                            ui.close();
+                        }
+                    });
+                    let mut fade = c.fade;
+                    if ui.add(egui::DragValue::new(&mut fade).speed(0.1).suffix(" s").range(0.0..=600.0)).on_hover_text("Fade-Zeit").changed() {
+                        acts.push(Action::SetCueFade(i, fade));
+                    }
+                    let mut follow = c.follow.is_some();
+                    if ui.checkbox(&mut follow, "").on_hover_text("Automatisch weiter (Follow)").changed() {
+                        acts.push(Action::SetCueFollow(i, follow.then_some(2.0)));
+                    }
+                    if let Some(mut f) = c.follow {
+                        if ui.add(egui::DragValue::new(&mut f).speed(0.1).suffix(" s").range(0.0..=600.0)).changed() {
+                            acts.push(Action::SetCueFollow(i, Some(f)));
+                        }
+                    }
+                });
+            }
+            if list.cues.is_empty() {
+                ui.label(RichText::new("Noch keine Cues. Werte einstellen und „Aufnehmen“ drücken.").color(theme::MUTED));
+            }
+        });
+    }
+
+    fn effects(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
+        use lichtpult::engine::{Shape, Target};
+        let accent = self.accent();
+        caption(ui, "Neuer Effekt aus Auswahl");
+        ui.horizontal_wrapped(|ui| {
+            for (t, n) in [(Target::Intensity, "Intensität"), (Target::Color, "Farbe"), (Target::Position, "Position")] {
+                if tile(ui, n, self.fx_pick.0 == t, accent).clicked() {
+                    self.fx_pick.0 = t;
+                }
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            for (s, n) in [(Shape::Sine, "Sinus"), (Shape::Triangle, "Dreieck"), (Shape::Saw, "Säge"), (Shape::Square, "Rechteck")] {
+                if tile(ui, n, self.fx_pick.1 == s, accent).clicked() {
+                    self.fx_pick.1 = s;
+                }
+            }
+        });
+        ui.horizontal(|ui| {
+            if ui.add_enabled(!e.selection.is_empty(), egui::Button::new("＋ Effekt")).clicked() {
+                acts.push(Action::AddEffect(self.fx_pick.0, self.fx_pick.1));
+            }
+            if ui.button("■ Alle stoppen").clicked() {
+                acts.push(Action::StopEffects);
+            }
+        });
+        ui.separator();
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            for (i, fx) in e.show.effects.iter().enumerate() {
+                let mut n = fx.clone();
+                let mut changed = false;
+                ui.horizontal(|ui| {
+                    if tile(ui, if fx.running { "■" } else { "▶" }, fx.running, accent).clicked() {
+                        acts.push(Action::ToggleEffect(i));
+                    }
+                    ui.label(RichText::new(short(&fx.name, 16)).color(if fx.running { accent } else { theme::TEXT }));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("🗑").clicked() {
+                            acts.push(Action::DeleteEffect(i));
+                        }
+                    });
+                });
+                ui.horizontal(|ui| {
+                    changed |= ui.add(egui::DragValue::new(&mut n.rate).speed(0.02).suffix(" Hz").range(0.01..=20.0)).changed();
+                    changed |= ui.add(egui::DragValue::new(&mut n.size).suffix(" Stärke")).changed();
+                    changed |= ui.add(egui::DragValue::new(&mut n.spread).speed(0.01).prefix("Versatz ").range(0.0..=1.0)).changed();
+                });
+                if changed {
+                    acts.push(Action::SetEffect(i, n));
+                }
+                ui.add_space(6.0);
+            }
+            if e.show.effects.is_empty() {
+                ui.label(RichText::new("Fixtures wählen, Typ und Form wählen, „Effekt“ drücken.").color(theme::MUTED));
+            }
+        });
+    }
+
+    fn stage(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
+        let accent = self.accent();
+        ui.horizontal(|ui| {
+            caption(ui, "Bühne");
+            ui.label(RichText::new("Klick = wählen (Shift = hinzufügen) · ziehen = verschieben · Leerraum ziehen = Rahmen").color(theme::MUTED));
+        });
+        let (rect, resp) = ui.allocate_exact_size(ui.available_size(), egui::Sense::click_and_drag());
+        let p = ui.painter_at(rect);
+        p.rect(rect, 6.0, Color32::from_rgb(8, 8, 10), egui::Stroke::new(1.0, theme::LINE), egui::StrokeKind::Inside);
+        let to_screen = |x: f32, y: f32| egui::pos2(rect.left() + x * rect.width(), rect.top() + y * rect.height());
+        let pos = |i: usize, f: &Fixture| {
+            if f.x == 0.0 && f.y == 0.0 {
+                let (c, r) = (i % 10, i / 10);
+                (0.1 + 0.8 * c as f32 / 9.0, 0.15 + 0.12 * r as f32)
+            } else {
+                (f.x, f.y)
+            }
+        };
+        let pointer = resp.interact_pointer_pos();
+        let shift = ui.input(|i| i.modifiers.shift || i.modifiers.command);
+        let mut hit: Option<u32> = None;
+        for (i, f) in e.show.fixtures.iter().enumerate() {
+            let (x, y) = pos(i, f);
+            let c = to_screen(x, y);
+            let sel = e.selection.contains(&f.id);
+            let col = rgb_of(|a| e.output_of(f, a));
+            let level = if e.show.has(f, Attr::Dimmer) { e.output_of(f, Attr::Dimmer) } else { col.r().max(col.g()).max(col.b()) };
+            let base = if [Attr::Red, Attr::Green, Attr::Blue, Attr::White].iter().any(|a| e.show.has(f, *a)) && level > 0 {
+                col
+            } else {
+                Color32::from_rgb(235, 235, 240)
+            };
+            let lit = base.gamma_multiply((level as f32 / 255.0).max(0.1));
+            p.circle(c, 14.0, lit, egui::Stroke::new(if sel { 2.0 } else { 1.0 }, if sel { accent } else { theme::LINE }));
+            p.text(c + egui::vec2(0.0, 24.0), egui::Align2::CENTER_CENTER, f.id.to_string(), egui::FontId::proportional(11.0), theme::MUTED);
+            if let Some(pp) = pointer {
+                if pp.distance(c) <= 16.0 && hit.is_none() && (resp.drag_started() || resp.clicked()) {
+                    hit = Some(f.id);
+                }
+            }
+        }
+        let band_id = egui::Id::new("stage_drag");
+        if resp.drag_started() {
+            let target = hit;
+            ui.data_mut(|d| d.insert_temp(band_id, (target, pointer)));
+            if let Some(id) = target {
+                if !e.selection.contains(&id) {
+                    acts.push(if shift { Action::Toggle(id) } else { Action::Select(id) });
+                }
+            }
+        }
+        let state: Option<(Option<u32>, Option<egui::Pos2>)> = ui.data(|d| d.get_temp(band_id));
+        if resp.dragged() {
+            if let Some((Some(_), _)) = state {
+                let d = resp.drag_delta();
+                for (i, f) in e.show.fixtures.iter().enumerate() {
+                    if e.selection.contains(&f.id) {
+                        let (x, y) = pos(i, f);
+                        acts.push(Action::SetPosition(f.id, x + d.x / rect.width(), y + d.y / rect.height()));
+                    }
+                }
+            } else if let (Some((None, Some(a))), Some(b)) = (state, pointer) {
+                let r = egui::Rect::from_two_pos(a, b);
+                p.rect(r, 0.0, accent.gamma_multiply(0.12), egui::Stroke::new(1.0, accent), egui::StrokeKind::Inside);
+            }
+        }
+        if resp.drag_stopped() {
+            if let (Some((None, Some(a))), Some(b)) = (state, pointer) {
+                let r = egui::Rect::from_two_pos(a, b);
+                let ids = e
+                    .show
+                    .fixtures
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, f)| {
+                        let (x, y) = pos(*i, f);
+                        r.contains(to_screen(x, y))
+                    })
+                    .map(|(_, f)| f.id)
+                    .collect();
+                acts.push(Action::SelectIds(ids));
+            }
+        }
+        if resp.clicked() {
+            match hit {
+                Some(id) => acts.push(if shift { Action::Toggle(id) } else { Action::Select(id) }),
+                None => acts.push(Action::ClearSelection),
+            }
+        }
     }
 }
 
@@ -579,31 +853,46 @@ impl eframe::App for App {
         let mut acts = Vec::new();
 
         if !ui.ctx().egui_wants_keyboard_input() {
+            let active = e.active;
             ui.input(|i| {
                 if i.key_pressed(egui::Key::Space) {
-                    acts.push(Action::Go);
+                    acts.push(Action::Go(active));
                 }
                 if i.key_pressed(egui::Key::Backspace) {
-                    acts.push(Action::Back);
+                    acts.push(Action::Back(active));
                 }
                 if i.key_pressed(egui::Key::Escape) {
                     acts.push(Action::ClearSelection);
                 }
+                if i.key_pressed(egui::Key::A) && i.modifiers.command {
+                    acts.push(Action::SelectAll);
+                }
+                if i.key_pressed(egui::Key::Z) && i.modifiers.command {
+                    acts.push(if i.modifiers.shift { Action::Redo } else { Action::Undo });
+                }
+                if i.key_pressed(egui::Key::Y) && i.modifiers.command {
+                    acts.push(Action::Redo);
+                }
             });
+        }
+        if ui.input(|i| i.key_pressed(egui::Key::L) && i.modifiers.command) {
+            ui.memory_mut(|m| m.request_focus(egui::Id::new("cmdline")));
         }
 
         egui::Panel::top("top").exact_size(56.0).show(ui, |ui| self.top_bar(ui, &e, &mut acts));
-        egui::Panel::bottom("playback").exact_size(52.0).show(ui, |ui| self.playback_bar(ui, &e, &mut acts));
+        egui::Panel::bottom("cmdline_bar").exact_size(40.0).show(ui, |ui| self.command_bar(ui, &e, &mut acts));
+        egui::Panel::bottom("playback").exact_size(124.0).show(ui, |ui| self.playbacks(ui, &e, &mut acts));
         if self.view == View::Live {
             egui::Panel::left("library").default_size(210.0).size_range(170.0..=360.0).show(ui, |ui| {
                 self.library_panel(ui, &e, &mut acts);
             });
-            egui::Panel::right("cues").default_size(230.0).size_range(200.0..=420.0).show(ui, |ui| {
-                self.cue_panel(ui, &e, &mut acts);
+            egui::Panel::right("side").default_size(260.0).size_range(220.0..=460.0).show(ui, |ui| {
+                self.side_panel(ui, &e, &mut acts);
             });
         }
         egui::CentralPanel::default().show(ui, |ui| match self.view {
             View::Live => self.live(ui, &e, &mut acts),
+            View::Stage => self.stage(ui, &e, &mut acts),
             View::Patch => self.patch(ui, &e, &mut acts),
             View::Output => self.output(ui, &e),
         });
