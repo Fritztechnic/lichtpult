@@ -208,40 +208,39 @@ pub fn icon_text(name: &str, text: &str, color: Color32) -> egui::Button<'static
     egui::Button::image_and_text(icon(name, color, 16.0), egui::RichText::new(text.to_string()).color(color))
 }
 
-/// Breiter waagerechter Regler: Name links, Wert rechts, Füllung in der Attributfarbe.
+/// Breiter senkrechter Fader-Block: Wert oben, Füllung von unten in der Attributfarbe, Name darunter.
 /// `set` = Wert kommt aus dem Programmer (hell), sonst aus der Wiedergabe (gedimmt).
 /// Doppelklick oder Rechtsklick gibt den Programmer-Wert frei.
 pub fn fader(ui: &mut egui::Ui, label: &str, value: u8, tint: Color32, set: bool) -> Fader {
     let mut out = Fader::None;
-    let (rect, r) = ui.allocate_exact_size(egui::vec2(ui.available_width().max(240.0), 32.0), egui::Sense::click_and_drag());
-    let track = Rect::from_min_max(egui::pos2(rect.left() + 84.0, rect.center().y - 5.0), egui::pos2(rect.right() - 52.0, rect.center().y + 5.0));
-    let k = value as f32 / 255.0;
-    let x = track.left() + track.width() * k;
-    let p = ui.painter();
-    p.text(egui::pos2(rect.left(), rect.center().y), egui::Align2::LEFT_CENTER, label, egui::FontId::proportional(14.0), if set { TEXT } else { MUTED });
-    p.rect_filled(track, 5.0, Color32::from_rgb(14, 14, 14));
-    let mut fill = track;
-    fill.set_right(x.max(track.left() + 1.0));
-    p.rect_filled(fill, 5.0, if set { tint } else { tint.gamma_multiply(0.35) });
-    let hot = r.hovered() || r.dragged();
-    p.circle(egui::pos2(x, rect.center().y), if hot { 9.0 } else { 8.0 }, if set { Color32::WHITE } else { Color32::from_rgb(150, 150, 150) }, Stroke::new(1.0, LINE));
-    p.text(
-        egui::pos2(rect.right(), rect.center().y),
-        egui::Align2::RIGHT_CENTER,
-        format!("{}%", (value as u32 * 100 + 127) / 255),
-        egui::FontId::monospace(13.0),
-        if set { TEXT } else { MUTED },
-    );
-    if r.double_clicked() || r.secondary_clicked() {
-        out = Fader::Reset;
-    } else if r.is_pointer_button_down_on() {
-        if let Some(pos) = r.interact_pointer_pos() {
-            out = Fader::Set((((pos.x - track.left()) / track.width()).clamp(0.0, 1.0) * 255.0).round() as u8);
+    ui.vertical(|ui| {
+        ui.set_width(FADER_W);
+        ui.spacing_mut().item_spacing.y = 6.0;
+        ui.vertical_centered(|ui| {
+            ui.label(RichText::new(format!("{}%", (value as u32 * 100 + 127) / 255)).monospace().color(if set { TEXT } else { MUTED }));
+        });
+        let (rect, r) = ui.allocate_exact_size(egui::vec2(FADER_W, 200.0), egui::Sense::click_and_drag());
+        let p = ui.painter();
+        p.rect_filled(rect, 4.0, Color32::from_rgb(14, 14, 14));
+        let h = rect.height() * value as f32 / 255.0;
+        let fill = Rect::from_min_max(egui::pos2(rect.left(), rect.bottom() - h), rect.right_bottom());
+        p.rect_filled(fill, 4.0, if set { tint } else { tint.gamma_multiply(0.35) });
+        let border = if r.hovered() || r.dragged() { tint } else { LINE };
+        p.rect_stroke(rect, 4.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+        if r.double_clicked() || r.secondary_clicked() {
+            out = Fader::Reset;
+        } else if r.is_pointer_button_down_on() {
+            if let Some(pos) = r.interact_pointer_pos() {
+                out = Fader::Set((((rect.bottom() - pos.y) / rect.height()).clamp(0.0, 1.0) * 255.0).round() as u8);
+            }
         }
-    }
-    r.on_hover_text("Ziehen = einstellen · Doppelklick oder Rechtsklick = freigeben");
+        r.on_hover_text("Ziehen = einstellen · Doppelklick oder Rechtsklick = freigeben");
+        ui.vertical_centered(|ui| ui.label(RichText::new(label).size(12.5).color(MUTED)));
+    });
     out
 }
+
+pub const FADER_W: f32 = 68.0;
 
 /// Info-Symbol: erklärt beim Darüberfahren, wofür der Bereich da ist.
 pub fn info(ui: &mut egui::Ui, title: &str, text: &str) {

@@ -185,13 +185,13 @@ impl App {
                 cards.push((kind, attrs));
             }
         }
-        const CARD_W: f32 = 420.0;
         // Karten zeilenweise packen, damit nichts überlappt.
         let avail = ui.available_width();
+        let card_w = |attrs: &[Attr]| (attrs.len() as f32 * (theme::FADER_W + 8.0)).clamp(300.0, (avail - 34.0).max(300.0));
         let mut rows: Vec<Vec<usize>> = vec![Vec::new()];
         let mut used = 0.0;
         for i in 0..cards.len() {
-            let w = CARD_W + 34.0;
+            let w = card_w(&cards[i].1) + 34.0;
             if used + w > avail && used > 0.0 {
                 rows.push(Vec::new());
                 used = 0.0;
@@ -208,7 +208,7 @@ impl App {
                         let kind = *kind;
                         egui::Frame::new().fill(theme::PANEL).stroke(egui::Stroke::new(1.0, theme::LINE)).corner_radius(4).inner_margin(16).show(ui, |ui| {
                             ui.vertical(|ui| {
-                                ui.set_width(CARD_W);
+                                ui.set_width(card_w(attrs));
                                 caption(ui, kind.name());
                                 let get = |a: Attr| -> (u8, bool) {
                                     let vals: Vec<(u8, bool)> = sel.iter().filter(|f| e.show.has(f, a)).map(|f| e.value_of(&play, f.id, a)).collect();
@@ -236,14 +236,17 @@ impl App {
                                         ui.label(RichText::new("Eigene Farbe").color(theme::MUTED));
                                     });
                                 }
-                                for a in attrs {
-                                    let (value, set) = get(*a);
-                                    match fader(ui, &short(a.name(), 10), value, theme::attr_tint(*a, accent), set) {
-                                        Fader::Set(v) => acts.push(Action::SetAttr(*a, v)),
-                                        Fader::Reset => acts.push(Action::ReleaseAttr(*a)),
-                                        Fader::None => {}
+                                ui.horizontal_top(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 8.0;
+                                    for a in attrs {
+                                        let (value, set) = get(*a);
+                                        match fader(ui, &short(a.name(), 9), value, theme::attr_tint(*a, accent), set) {
+                                            Fader::Set(v) => acts.push(Action::SetAttr(*a, v)),
+                                            Fader::Reset => acts.push(Action::ReleaseAttr(*a)),
+                                            Fader::None => {}
+                                        }
                                     }
-                                }
+                                });
                                 if kind == Kind::Position && attrs.contains(&Attr::Pan) && attrs.contains(&Attr::Tilt) {
                                     if let Some((x, y)) = xy_pad(ui, get(Attr::Pan).0, get(Attr::Tilt).0, accent) {
                                         acts.push(Action::SetAttr(Attr::Pan, x));
