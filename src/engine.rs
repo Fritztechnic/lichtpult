@@ -129,10 +129,27 @@ pub enum PropKind {
     Pult,
     Publikum,
     Text,
+    Vorhang,
+    Mikrofon,
+    Treppe,
+    Bildschirm,
+    Rechteck,
 }
 
 impl PropKind {
-    pub const ALL: [PropKind; 6] = [PropKind::Podest, PropKind::Truss, PropKind::Lautsprecher, PropKind::Pult, PropKind::Publikum, PropKind::Text];
+    pub const ALL: [PropKind; 11] = [
+        PropKind::Podest,
+        PropKind::Truss,
+        PropKind::Lautsprecher,
+        PropKind::Pult,
+        PropKind::Publikum,
+        PropKind::Text,
+        PropKind::Vorhang,
+        PropKind::Mikrofon,
+        PropKind::Treppe,
+        PropKind::Bildschirm,
+        PropKind::Rechteck,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -142,6 +159,11 @@ impl PropKind {
             PropKind::Pult => "Pult",
             PropKind::Publikum => "Publikum",
             PropKind::Text => "Beschriftung",
+            PropKind::Vorhang => "Vorhang",
+            PropKind::Mikrofon => "Mikrofon",
+            PropKind::Treppe => "Treppe",
+            PropKind::Bildschirm => "Bildschirm",
+            PropKind::Rechteck => "Rechteck",
         }
     }
 
@@ -154,6 +176,11 @@ impl PropKind {
             PropKind::Pult => (0.1, 0.07),
             PropKind::Publikum => (0.6, 0.12),
             PropKind::Text => (0.14, 0.05),
+            PropKind::Vorhang => (0.5, 0.03),
+            PropKind::Mikrofon => (0.03, 0.05),
+            PropKind::Treppe => (0.1, 0.1),
+            PropKind::Bildschirm => (0.25, 0.03),
+            PropKind::Rechteck => (0.15, 0.1),
         }
     }
 }
@@ -277,6 +304,9 @@ pub enum Action {
     SetCueFade(usize, f32),
     SetCueFollow(usize, Option<f32>),
     DeleteCue(usize),
+    /// Szene von Position `from` nach `to` verschieben.
+    MoveCue(usize, usize),
+    DuplicateCue(usize),
     RenameCue(usize, String),
     /// Programmer-Werte in den Cue übernehmen.
     UpdateCue(usize),
@@ -331,6 +361,8 @@ impl Action {
                 | SetCueFade(..)
                 | SetCueFollow(..)
                 | DeleteCue(_)
+                | MoveCue(..)
+                | DuplicateCue(_)
                 | RenameCue(..)
                 | UpdateCue(_)
                 | AddList
@@ -819,6 +851,33 @@ impl Engine {
                     }
                 }
             }
+            Action::MoveCue(from, to) => {
+                let n = self.show.lists[l].cues.len();
+                if from < n && to < n && from != to {
+                    let c = self.show.lists[l].cues.remove(from);
+                    self.show.lists[l].cues.insert(to, c);
+                    if let Some(cur) = self.players[l].cue {
+                        self.players[l].cue = Some(if cur == from {
+                            to
+                        } else if from < cur && cur <= to {
+                            cur - 1
+                        } else if to <= cur && cur < from {
+                            cur + 1
+                        } else {
+                            cur
+                        });
+                    }
+                }
+            }
+            Action::DuplicateCue(i) => {
+                if let Some(mut c) = self.show.lists[l].cues.get(i).cloned() {
+                    c.name = format!("{} Kopie", c.name);
+                    self.show.lists[l].cues.insert(i + 1, c);
+                    if let Some(cur) = self.players[l].cue.filter(|&c| c > i) {
+                        self.players[l].cue = Some(cur + 1);
+                    }
+                }
+            }
             Action::RenameCue(i, n) => {
                 if let Some(c) = self.show.lists[l].cues.get_mut(i) {
                     c.name = n;
@@ -1076,6 +1135,22 @@ mod tests {
         let mut e = Engine::new(Show::default());
         e.apply(Action::AddFixtures { ty: 3, count: 2, universe: 1, address: 1 });
         e
+    }
+
+    #[test]
+    fn move_and_duplicate_cue_keep_playback_index() {
+        let mut e = Engine::new(Show { types: builtin_types(), ..Show::default() });
+        e.apply(Action::AddFixtures { ty: 0, count: 1, universe: 1, address: 1 });
+        e.apply(Action::SelectAll);
+        for _ in 0..3 {
+            e.apply(Action::StoreScene);
+        }
+        e.apply(Action::GotoCue(0));
+        e.apply(Action::MoveCue(0, 2));
+        assert_eq!(e.cue(), Some(2));
+        e.apply(Action::DuplicateCue(0));
+        assert_eq!(e.list().cues.len(), 4);
+        assert_eq!(e.cue(), Some(3));
     }
 
     #[test]

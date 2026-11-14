@@ -221,6 +221,20 @@ impl App {
         if ui.add_enabled(!e.programmer.is_empty(), theme::icon_text("reset", "Look aktualisieren", theme::TEXT).min_size(full)).on_hover_text("Ersetzt den Look dieser Szene durch die aktuellen Programmer-Werte").clicked() {
             acts.push(Action::UpdateCue(i));
         }
+        let n = list.cues.len();
+        ui.horizontal(|ui| {
+            if ui.add_enabled(i > 0, theme::icon_text("up", "Hoch", theme::TEXT).min_size(egui::vec2(88.0, 32.0))).clicked() {
+                acts.push(Action::MoveCue(i, i - 1));
+                self.scene_sel = i - 1;
+            }
+            if ui.add_enabled(i + 1 < n, theme::icon_text("down", "Runter", theme::TEXT).min_size(egui::vec2(88.0, 32.0))).clicked() {
+                acts.push(Action::MoveCue(i, i + 1));
+                self.scene_sel = i + 1;
+            }
+        });
+        if ui.add(theme::icon_text("copy", "Duplizieren", theme::TEXT).min_size(full)).clicked() {
+            acts.push(Action::DuplicateCue(i));
+        }
         if ui.add(theme::icon_text("trash", "Szene löschen", theme::DANGER).min_size(full)).clicked() {
             acts.push(Action::DeleteCue(i));
         }

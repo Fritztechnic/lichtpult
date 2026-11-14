@@ -68,6 +68,33 @@ fn draw_prop(painter: &egui::Painter, p: &Prop, r: Rect, selected: bool, accent:
                 }
             }
         }
+        PropKind::Vorhang => {
+            painter.rect(r, 0.0, theme::PANEL, line, egui::StrokeKind::Inside);
+            let n = ((r.width() / 8.0) as i32).max(2);
+            for k in 1..n {
+                let x = r.left() + r.width() * k as f32 / n as f32;
+                painter.line_segment([egui::pos2(x, r.top()), egui::pos2(x, r.bottom())], Stroke::new(1.0, theme::LINE));
+            }
+        }
+        PropKind::Mikrofon => {
+            let c = r.center();
+            painter.circle(c - egui::vec2(0.0, r.height() * 0.2), r.width().min(r.height()) * 0.25, theme::PANEL, line);
+            painter.line_segment([c, egui::pos2(c.x, r.bottom())], line);
+        }
+        PropKind::Treppe => {
+            painter.rect(r, 2.0, theme::PANEL, line, egui::StrokeKind::Inside);
+            let n = ((r.height() / 6.0) as i32).clamp(2, 8);
+            for k in 1..n {
+                let y = r.top() + r.height() * k as f32 / n as f32;
+                painter.line_segment([egui::pos2(r.left(), y), egui::pos2(r.right(), y)], line);
+            }
+        }
+        PropKind::Bildschirm => {
+            painter.rect(r, 2.0, Color32::from_rgb(8, 24, 40), Stroke::new(1.0, if selected { accent } else { Color32::from_rgb(40, 90, 140) }), egui::StrokeKind::Inside);
+        }
+        PropKind::Rechteck => {
+            painter.rect(r, 2.0, theme::RAISED, line, egui::StrokeKind::Inside);
+        }
         PropKind::Text => {
             if selected {
                 painter.rect_stroke(r, 2.0, Stroke::new(1.0, accent), egui::StrokeKind::Inside);
@@ -112,6 +139,8 @@ impl App {
             }
             x += step;
         }
+        p.line_segment([egui::pos2(rect.left(), rect.bottom() - 28.0), egui::pos2(rect.right(), rect.bottom() - 28.0)], Stroke::new(1.0, theme::LINE));
+        p.text(egui::pos2(rect.center().x, rect.bottom() - 14.0), egui::Align2::CENTER_CENTER, "BÜHNENKANTE · PUBLIKUM", egui::FontId::proportional(11.0), theme::MUTED);
         let to_screen = |x: f32, y: f32| egui::pos2(rect.left() + x * rect.width(), rect.top() + y * rect.height());
         let pos = |i: usize, f: &Fixture| {
             if f.x == 0.0 && f.y == 0.0 {
@@ -137,6 +166,9 @@ impl App {
             let level = if e.show.has(f, Attr::Dimmer) { e.output_of(f, Attr::Dimmer) } else { col.r().max(col.g()).max(col.b()) };
             let base = if [Attr::Red, Attr::Green, Attr::Blue, Attr::White].iter().any(|a| e.show.has(f, *a)) && level > 0 { col } else { Color32::from_rgb(235, 235, 240) };
             let lit = base.gamma_multiply((level as f32 / 255.0).max(0.1));
+            if level > 0 {
+                p.circle_filled(c, 26.0, base.gamma_multiply(0.18 * level as f32 / 255.0));
+            }
             p.circle(c, 14.0, lit, Stroke::new(if sel { 2.0 } else { 1.0 }, if sel { accent } else { theme::LINE }));
             p.text(c + egui::vec2(0.0, 24.0), egui::Align2::CENTER_CENTER, f.id.to_string(), egui::FontId::proportional(11.0), theme::MUTED);
         }

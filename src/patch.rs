@@ -117,6 +117,47 @@ impl App {
             }
         });
 
+        caption(ui, "Gepatchte Fixtures");
+        ui.add_space(4.0);
+        egui::ScrollArea::vertical().id_salt("patched").max_height(320.0).auto_shrink([false, true]).show(ui, |ui| {
+            egui::Grid::new("patch_grid").striped(true).min_col_width(48.0).spacing([20.0, 6.0]).show(ui, |ui| {
+                for h in ["ID", "Name", "Typ", "Univ.", "Adresse", "Bereich", "Status", ""] {
+                    ui.label(RichText::new(h).size(12.0).color(theme::MUTED));
+                }
+                ui.end_row();
+                for f in &e.show.fixtures {
+                    let bad = conflicts.contains(&f.id);
+                    let sel = e.selection.contains(&f.id);
+                    if ui.selectable_label(sel, f.id.to_string()).clicked() {
+                        acts.push(Action::Select(f.id));
+                        self.patch.2 = f.universe;
+                    }
+                    let mut name = f.name.clone();
+                    if ui.add_sized([160.0, 28.0], egui::TextEdit::singleline(&mut name)).changed() {
+                        acts.push(Action::RenameFixture(f.id, name));
+                    }
+                    ui.label(RichText::new(short(&e.show.types[f.ty].name, 22)).color(theme::MUTED));
+                    let (mut uni, mut adr) = (f.universe, f.address);
+                    let a = ui.add(egui::DragValue::new(&mut uni).range(1..=32768)).changed();
+                    let b = ui.add(egui::DragValue::new(&mut adr).range(1..=512)).changed();
+                    if a || b {
+                        acts.push(Action::SetPatch { id: f.id, universe: uni, address: adr });
+                    }
+                    ui.label(format!("{}–{}", f.address, e.show.range(f).end.saturating_sub(1)));
+                    if bad {
+                        ui.label(RichText::new("● Konflikt").color(theme::DANGER));
+                    } else {
+                        ui.label(RichText::new("● OK").color(theme::OK));
+                    }
+                    if theme::icon_btn(ui, "x", "Fixture entfernen").clicked() {
+                        acts.push(Action::RemoveFixture(f.id));
+                    }
+                    ui.end_row();
+                }
+            });
+        });
+        ui.add_space(12.0);
+
         // Belegungskarte: 512 Kanäle, 32 pro Zeile.
         let uni = self.patch.2;
         let mut owner: Vec<Vec<usize>> = vec![Vec::new(); 512];
@@ -171,41 +212,6 @@ impl App {
             }
         }
 
-        ui.add_space(6.0);
-        caption(ui, "Gepatchte Fixtures");
-        egui::ScrollArea::vertical().id_salt("patched").show(ui, |ui| {
-            egui::Grid::new("patch_grid").striped(true).spacing([16.0, 6.0]).show(ui, |ui| {
-                for h in ["ID", "Name", "Univ.", "Adresse", "Bereich", ""] {
-                    ui.label(RichText::new(h).size(12.0).color(theme::MUTED));
-                }
-                ui.end_row();
-                for f in &e.show.fixtures {
-                    let bad = conflicts.contains(&f.id);
-                    let sel = e.selection.contains(&f.id);
-                    if ui.selectable_label(sel, f.id.to_string()).clicked() {
-                        acts.push(Action::Select(f.id));
-                        self.patch.2 = f.universe;
-                    }
-                    let mut name = f.name.clone();
-                    let tn = e.show.types[f.ty].name.clone();
-                    if ui.add_sized([150.0, 26.0], egui::TextEdit::singleline(&mut name)).on_hover_text(tn).changed() {
-                        acts.push(Action::RenameFixture(f.id, name));
-                    }
-                    let (mut uni, mut adr) = (f.universe, f.address);
-                    let a = ui.add(egui::DragValue::new(&mut uni).range(1..=32768)).changed();
-                    let b = ui.add(egui::DragValue::new(&mut adr).range(1..=512)).changed();
-                    if a || b {
-                        acts.push(Action::SetPatch { id: f.id, universe: uni, address: adr });
-                    }
-                    let span = format!("{}–{}", f.address, e.show.range(f).end.saturating_sub(1));
-                    ui.label(if bad { RichText::new(format!("{span}  Konflikt")).color(theme::DANGER) } else { RichText::new(span) });
-                    if theme::icon_btn(ui, "x", "Fixture entfernen").clicked() {
-                        acts.push(Action::RemoveFixture(f.id));
-                    }
-                    ui.end_row();
-                }
-            });
-        });
     }
 
 }
