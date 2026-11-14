@@ -14,6 +14,7 @@ pub enum Attr {
     Pan,
     Tilt,
     Zoom,
+    Strobe,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -25,7 +26,7 @@ pub enum Kind {
 }
 
 impl Attr {
-    pub const ALL: [Attr; 10] = [
+    pub const ALL: [Attr; 11] = [
         Attr::Dimmer,
         Attr::Red,
         Attr::Green,
@@ -36,6 +37,7 @@ impl Attr {
         Attr::Pan,
         Attr::Tilt,
         Attr::Zoom,
+        Attr::Strobe,
     ];
 
     pub fn name(self) -> &'static str {
@@ -50,6 +52,7 @@ impl Attr {
             Attr::Pan => "Pan",
             Attr::Tilt => "Tilt",
             Attr::Zoom => "Zoom",
+            Attr::Strobe => "Strobe",
         }
     }
 
@@ -58,7 +61,7 @@ impl Attr {
             Attr::Dimmer => Kind::Intensity,
             Attr::Red | Attr::Green | Attr::Blue | Attr::White | Attr::Amber | Attr::Uv => Kind::Color,
             Attr::Pan | Attr::Tilt => Kind::Position,
-            Attr::Zoom => Kind::Beam,
+            Attr::Zoom | Attr::Strobe => Kind::Beam,
         }
     }
 
@@ -100,6 +103,7 @@ pub fn builtin_types() -> Vec<FixtureType> {
         t("RGBW", &[Red, Green, Blue, White]),
         t("Dimmer + RGB", &[Dimmer, Red, Green, Blue]),
         t("Moving Head", &[Pan, Tilt, Dimmer, Red, Green, Blue, White, Zoom]),
+        t("Uking Lichtorgel (4 Kanäle, dann 8x Dimmer)", &[Pan, Tilt, Dimmer, Strobe]),
     ]
 }
 
