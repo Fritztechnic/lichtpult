@@ -14,9 +14,9 @@ Alle Bedienelemente steuern die Engine nur über `engine::Action`.
 ## Starten
 ```
 cd ui && npm install && npm run build && cd ..
-cargo run --bin lichtpult-server      # Browser: http://127.0.0.1:8787
-cargo tauri dev                       # Desktop (cargo install tauri-cli --version "^2")
-cargo tauri build
+cargo tauri dev                       # Desktop-App (cargo install tauri-cli --version "^2")
+cargo tauri build                     # fertige Desktop-App / Installer
+cargo run --bin lichtpult-server      # nur zum Testen im Browser (http://127.0.0.1:8787)
 cargo test --lib
 ```
 

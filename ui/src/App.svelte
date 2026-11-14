@@ -78,9 +78,10 @@
     S.dialog?.resolve(v)
     S.dialog = null
   }
+  const cycle = (d: number) => { const i = views.findIndex((v) => v[0] === S.view); S.view = views[(i + d + views.length) % views.length][0] }
   const cell = (i: number) => S.page * 10 + i
   const lists = $derived(show?.lists ?? [])
-  const tcolor = (i: number) => (lists[i]?.chase ? 'var(--blue)' : 'var(--red)')
+  const tcolor = (i: number) => (lists[i]?.chase ? '#2a64c8' : '#1f7a2e')
 </script>
 
 <svelte:window onkeydown={keys} />
@@ -90,7 +91,7 @@
 {:else}
   <div class="app">
     <div class="top">
-      <button class="logo" onclick={openSettings}><Zap size={16} /> LICHTPULT</button>
+      <button class="logo" onclick={openSettings}>LICHTPULT</button>
       <span class="dim show">{show.name}</span>
       <span class="spacer"></span>
       <div class="msg" class:err={S.error}>{S.msg}</div>
@@ -106,6 +107,15 @@
     </div>
 
     <div class="main">
+      <nav class="side">
+        <button class="chev" aria-label="Previous view" onclick={() => cycle(-1)}><ChevronUp size={16} /></button>
+        {#each views as [id, name, Icon]}
+          <button class="sbtn" class:on={S.view === id} onclick={() => (S.view = id)}><Icon size={24} strokeWidth={1.6} /><span>{name}</span></button>
+        {/each}
+        <button class="chev" aria-label="Next view" onclick={() => cycle(1)}><ChevronDown size={16} /></button>
+        <span class="spacer"></span>
+        <button class="sbtn" onclick={openSettings}><Settings size={24} strokeWidth={1.6} /><span>Settings</span></button>
+      </nav>
       <div class="view">
         {#if S.view === 'compose'}<Compose />
         {:else if S.view === 'playback'}<Playback />
@@ -113,13 +123,6 @@
         {:else if S.view === 'patch'}<Patch />
         {:else}<Output />{/if}
       </div>
-      <nav class="side">
-        {#each views as [id, name, Icon]}
-          <button class="sbtn" class:on={S.view === id} onclick={() => (S.view = id)}><Icon size={24} strokeWidth={1.6} /><span>{name}</span></button>
-        {/each}
-        <span class="spacer"></span>
-        <button class="sbtn" onclick={openSettings}><Settings size={24} strokeWidth={1.6} /><span>Settings</span></button>
-      </nav>
     </div>
 
     <div class="bank">
@@ -209,39 +212,41 @@
 
 <style>
   .boot { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--dim); }
-  .app { display: grid; grid-template-rows: 36px minmax(0, 1fr) 196px 34px; height: 100%; }
-  .top { display: flex; align-items: center; gap: 8px; padding: 0 8px; background: #0b0b0b; border-bottom: 1px solid var(--line); }
-  .logo { display: inline-flex; align-items: center; gap: 6px; background: var(--btn-red); border: 1px solid #e04848; padding: 5px 12px; font-weight: 700; letter-spacing: .12em; font-size: 12px; }
-  .show { font-size: 12px; }
-  .msg { font-size: 12px; color: var(--orange); min-width: 200px; text-align: center; } .msg.err { color: #ff6060; }
-  .gm { display: inline-flex; align-items: center; gap: 6px; margin: 0 8px; }
-  .gm input[type='range'] { width: 130px; accent-color: var(--red-hi); padding: 0; }
-  .main { display: grid; grid-template-columns: minmax(0, 1fr) 74px; min-height: 0; overflow: hidden; }
+  .app { display: grid; grid-template-rows: 32px minmax(0, 1fr) 190px 28px; height: 100%; }
+  .top { display: flex; align-items: center; gap: 10px; padding: 0 8px; background: #050505; border-bottom: 1px solid var(--line); }
+  .logo { display: inline-flex; align-items: center; gap: 6px; font-weight: 900; letter-spacing: .2em; font-size: 12px; color: #fff; }
+  .show { font-size: 11px; }
+  .msg { font-size: 11px; color: var(--orange); min-width: 200px; text-align: center; } .msg.err { color: #ff6060; }
+  .gm { display: inline-flex; align-items: center; gap: 6px; margin: 0 8px; font-size: 11px; }
+  .gm input[type='range'] { width: 110px; accent-color: var(--red-hi); padding: 0; }
+  .main { display: grid; grid-template-columns: 70px minmax(0, 1fr); min-height: 0; overflow: hidden; }
   .view { min-width: 0; min-height: 0; overflow: hidden; height: 100%; }
-  .side { display: flex; flex-direction: column; gap: 3px; padding: 3px; border-left: 1px solid var(--line); background: #0b0b0b; }
-  .sbtn { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 2px; background: var(--btn); border: 1px solid #444; border-radius: 2px; font-size: 11px; }
-  .sbtn.on { background: var(--btn-red); border-color: #e04848; }
-  .bank { display: grid; grid-template-columns: 250px 1fr; border-top: 1px solid var(--line); background: #0b0b0b; min-height: 0; }
+  .side { display: flex; flex-direction: column; gap: 3px; padding: 3px; border-right: 1px solid var(--line); background: #050505; }
+  .sbtn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; height: 58px; background: var(--btn); border: 1px solid var(--line-hi); font-size: 10px; color: #aaa; }
+  .sbtn:hover { background: var(--btn-hi); }
+  .sbtn.on { background: #2e2e2e; border-color: #fff; color: #fff; }
+  .chev { height: 22px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line); color: #888; } .chev:hover { color: #fff; border-color: #888; }
+  .bank { display: grid; grid-template-columns: 230px 1fr; border-top: 1px solid var(--line); background: #050505; min-height: 0; }
   .maingo { display: flex; flex-direction: column; gap: 3px; padding: 3px; border-right: 1px solid var(--line); }
   .mg { display: grid; grid-template-columns: 1fr 1.4fr; gap: 3px; flex: 1; }
   .mg:last-of-type { grid-template-columns: 1fr 1fr; }
-  .gob { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: var(--btn); border: 1px solid #4a4a4a; font-size: 11px; font-weight: 700; }
-  .gob:hover { border-color: #888; } .gob:active { filter: brightness(1.4); }
-  .gob.go { background: var(--btn-green); border-color: #50d068; font-size: 14px; }
-  .pager { display: flex; align-items: center; justify-content: space-between; font-size: 12px; }
+  .gob { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: var(--btn); border: 1px solid var(--line-hi); font-size: 10px; font-weight: 700; }
+  .gob:hover { border-color: #888; background: var(--btn-hi); } .gob:active { background: #333; }
+  .gob.go { background: var(--btn-green); border-color: #50d068; font-size: 13px; }
+  .pager { display: flex; align-items: center; justify-content: space-between; font-size: 11px; }
   .cells { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; padding: 3px; min-width: 0; }
-  .bcell { display: grid; grid-template-rows: 38px 1fr 28px 18px; gap: 3px; background: #121212; border: 1px solid #333; padding: 3px; min-width: 0; min-height: 0; }
-  .bcell.act { border-color: #e04848; }
-  .bcell.empty { background: #050505; border-color: #1c1c1c; display: block; position: relative; color: #444; }
+  .bcell { display: grid; grid-template-rows: 34px 1fr 26px 16px; gap: 3px; background: #0d0d0d; border: 1px solid #2a2a2a; padding: 3px; min-width: 0; min-height: 0; }
+  .bcell.act { border-color: #fff; }
+  .bcell.empty { background: transparent; border-color: #1a1a1a; display: block; position: relative; color: #333; }
   .bcell.empty .n { position: absolute; left: 4px; top: 3px; font-size: 10px; }
-  .bhead { position: relative; background: linear-gradient(#2e2e2e, #1f1f1f); border: 1px solid #444; border-top: 3px solid var(--tc); overflow: hidden; }
-  .bhead .n { position: absolute; left: 3px; top: 1px; font-size: 9px; color: #999; }
-  .bhead .nm { display: block; padding: 8px 2px 0; font-size: 11px; line-height: 1.1; }
+  .bhead { position: relative; background: var(--tc); border: 0; overflow: hidden; text-align: left; }
+  .bhead .n { position: absolute; left: 4px; top: 2px; font-size: 9px; color: #ffffffb0; }
+  .bhead .nm { display: block; padding: 12px 4px 0; font-size: 11px; line-height: 1.1; font-weight: 700; color: #fff; }
   .bf { min-height: 0; } .bf :global(.fader) { min-width: 0; } .bf :global(.track) { min-height: 20px; }
   .bb { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
   .bfoot { font-size: 10px; color: var(--dim); text-align: center; }
-  .cmdl { display: flex; align-items: center; gap: 8px; padding: 0 8px; background: #0b0b0b; border-top: 1px solid var(--line); }
-  .cmdl input { flex: 1; background: #000; height: 24px; }
-  .mode { font-size: 11px; font-weight: 700; padding: 2px 8px; background: var(--btn-green); border: 1px solid #50d068; } .mode.blind { background: var(--btn-red); border-color: #e04848; }
-  .sel { font-size: 11px; }
+  .cmdl { display: flex; align-items: center; gap: 8px; padding: 0 8px; background: #050505; border-top: 1px solid var(--line); }
+  .cmdl input { flex: 1; background: #000; height: 20px; }
+  .mode { font-size: 10px; font-weight: 700; padding: 1px 8px; background: var(--btn-green); } .mode.blind { background: var(--btn-red); }
+  .sel { font-size: 10px; }
 </style>

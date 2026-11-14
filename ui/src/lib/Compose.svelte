@@ -36,6 +36,8 @@
   let focusAttr = $state('Dimmer')
   let fxSel = $state(0)
 
+  const TC: Record<string, string> = { Intensity: '#e03a38', Position: '#b060e0', Color: '#3fbf55', Beam: '#3a8ee0', FX: '#e0a030' }
+  const fill = (n: number, c: number) => Math.max(c * 6, Math.ceil(n / c) * c) - n
   const pct = (v: number) => Math.round((v / 255) * 100) + '%'
 
   async function clickFixture(id: number, e: MouseEvent) {
@@ -142,30 +144,30 @@
 <div class="compose">
   <section class="win fc">
     <header>
-      <Tool icon={MousePointer2} label="All" onclick={() => S.act('SelectAll')} />
-      <Tool icon={Eraser} label="None" onclick={() => S.act('ClearSelection')} />
-      <Tool icon={ArrowLeftRight} label="Invert" onclick={() => S.act('InvertSelection')} />
-      <Tool icon={ListFilter} label="Every" onclick={every} />
-      <Tool icon={ChevronLeft} label="Last" onclick={() => S.act({ SelectStep: -1 })} />
-      <Tool icon={ChevronRight} label="Next" onclick={() => S.act({ SelectStep: 1 })} />
+      <Tool icon={MousePointer2} label="All" acc="var(--green)" onclick={() => S.act('SelectAll')} />
+      <Tool icon={Eraser} label="None" acc="var(--red-hi)" onclick={() => S.act('ClearSelection')} />
+      <Tool icon={ArrowLeftRight} label="Invert" acc="var(--blue)" onclick={() => S.act('InvertSelection')} />
+      <Tool icon={ListFilter} label="Every" acc="var(--yellow)" onclick={every} />
+      <Tool icon={ChevronLeft} label="Last" acc="var(--blue)" onclick={() => S.act({ SelectStep: -1 })} />
+      <Tool icon={ChevronRight} label="Next" acc="var(--green)" onclick={() => S.act({ SelectStep: 1 })} />
       <div class="title">Fixture Center <Info text="Click a fixture to toggle it in the selection, Shift+click selects a range. Groups store a selection. The red pad is the last selected fixture." /></div>
       {#if fcTab === 'groups'}
-        <Tool icon={Save} label="Record" onclick={recGroup} />
-        <Tool icon={RefreshCw} label="Update" on={mode === 'update'} onclick={() => setMode('update')} />
-        <Tool icon={Pencil} label="Rename" on={mode === 'rename'} onclick={() => setMode('rename')} />
-        <Tool icon={Trash2} label="Delete" on={mode === 'delete'} onclick={() => setMode('delete')} />
+        <Tool icon={Save} label="Record" acc="var(--red-hi)" onclick={recGroup} />
+        <Tool icon={RefreshCw} label="Update" acc="var(--yellow)" on={mode === 'update'} onclick={() => setMode('update')} />
+        <Tool icon={Pencil} label="Rename" acc="var(--blue)" on={mode === 'rename'} onclick={() => setMode('rename')} />
+        <Tool icon={Trash2} label="Delete" acc="var(--red-hi)" on={mode === 'delete'} onclick={() => setMode('delete')} />
       {/if}
     </header>
     <div class="body">
       {#if fcTab === 'groups'}
-        <div class="padgrid">
+        <div class="padgrid" style="--cols:6">
           {#each show.groups as g, i}
             <button class="pad" onclick={() => groupClick(i)}><span class="n">{i + 1}</span><span class="nm">{g.name}</span><span class="v">{g.ids.length}</span></button>
           {/each}
-          {#if !show.groups.length}<div class="dim hint">No groups. Select fixtures and press Record.</div>{/if}
+          {#each Array(fill(show.groups.length, 6)) as _, k}<div class="cellx"><i>{show.groups.length + k + 1}</i></div>{/each}
         </div>
       {:else}
-        <div class="padgrid">
+        <div class="padgrid" style="--cols:6">
           {#each fcIds as f}
             {@const lf = liveFx.get(f.id)}
             <button class="pad" class:sel={sel.has(f.id)} class:last={live.last_selected === f.id} class:conflict={live.conflicts.includes(f.id)}
@@ -174,52 +176,52 @@
               <span class="n">{f.id}</span><span class="nm">{f.name}</span><span class="v">{Math.round((lf?.level ?? 0) * 100)}%</span>
             </button>
           {/each}
-          {#if !fcIds.length}<div class="dim hint">{fcTab === 'selected' ? 'Nothing selected.' : 'No fixtures patched. Open Patch to add some.'}</div>{/if}
+          {#each Array(fill(fcIds.length, 6)) as _, k}<div class="cellx"><i>{fcIds.length + k + 1}</i></div>{/each}
         </div>
       {/if}
     </div>
     <footer class="tabs">
-      <button class="tab" class:on={fcTab === 'groups'} onclick={() => (fcTab = 'groups')}>Groups <span class="cnt">{show.groups.length}</span></button>
-      <button class="tab" class:on={fcTab === 'fixtures'} onclick={() => (fcTab = 'fixtures')}>Fixtures <span class="cnt">{show.fixtures.length}</span></button>
-      <button class="tab" class:on={fcTab === 'selected'} onclick={() => (fcTab = 'selected')}>Selected <span class="cnt">{live.selection.length}</span></button>
+      <button class="tab" data-k="G" style="--tc:#3a8ee0" class:on={fcTab === 'groups'} onclick={() => (fcTab = 'groups')}>Groups <span class="cnt">{show.groups.length}</span></button>
+      <button class="tab" data-k="F" style="--tc:#3fbf55" class:on={fcTab === 'fixtures'} onclick={() => (fcTab = 'fixtures')}>Fixtures <span class="cnt">{show.fixtures.length}</span></button>
+      <button class="tab" data-k="S" style="--tc:#e0a030" class:on={fcTab === 'selected'} onclick={() => (fcTab = 'selected')}>Selected <span class="cnt">{live.selection.length}</span></button>
     </footer>
   </section>
 
   <section class="win pr">
     <header>
-      <Tool icon={Save} label="Record" onclick={recPreset} title="Store the programmer values of this type as a preset" />
-      <Tool icon={RefreshCw} label="Update" on={mode === 'update'} onclick={() => setMode('update')} />
-      <Tool icon={Pencil} label="Rename" on={mode === 'rename'} onclick={() => setMode('rename')} />
-      <Tool icon={Trash2} label="Delete" on={mode === 'delete'} onclick={() => setMode('delete')} />
+      <Tool icon={Save} label="Record" acc="var(--red-hi)" onclick={recPreset} title="Store the programmer values of this type as a preset" />
+      <Tool icon={RefreshCw} label="Update" acc="var(--yellow)" on={mode === 'update'} onclick={() => setMode('update')} />
+      <Tool icon={Pencil} label="Rename" acc="var(--blue)" on={mode === 'rename'} onclick={() => setMode('rename')} />
+      <Tool icon={Trash2} label="Delete" acc="var(--red-hi)" on={mode === 'delete'} onclick={() => setMode('delete')} />
       <div class="title">Presets <Info text="Record stores the current programmer values of the active preset type. Choose Update, Rename or Delete first, then click a preset. Click a preset to apply it to the selected fixtures." /></div>
     </header>
     <div class="body">
-      <div class="padgrid">
+      <div class="padgrid" style="--cols:5">
         {#each presets as { p, i }}
           <button class="pad" onclick={() => presetClick(i)}>
             {#if p.kind === 'Color'}<span class="sw" style="background:rgb({p.values.Red ?? 0},{p.values.Green ?? 0},{p.values.Blue ?? 0})"></span>{/if}
             <span class="n">{i + 1}</span><span class="nm">{p.name}</span>
           </button>
         {/each}
-        {#if !presets.length}<div class="dim hint">No {pTab} presets yet.</div>{/if}
+        {#each Array(fill(presets.length, 5)) as _, k}<div class="cellx"><i>{presets.length + k + 1}</i></div>{/each}
       </div>
     </div>
     <footer class="tabs">
       {#each [['I', 'Intensity'], ['P', 'Position'], ['C', 'Color'], ['B', 'Beam']] as [k, n]}
-        <button class="tab" class:on={pTab === n} onclick={() => (pTab = n as Kind)}>{n} <span class="cnt">{show.palettes.filter((p) => p.kind === n).length}</span></button>
+        <button class="tab" data-k={k} style="--tc:{TC[n]}" class:on={pTab === n} onclick={() => (pTab = n as Kind)}>{n} <span class="cnt">{show.palettes.filter((p) => p.kind === n).length}</span></button>
       {/each}
     </footer>
   </section>
 
   <section class="win prog">
     <header>
-      <Tool icon={Eraser} label="Clear" disabled={!progRows.length} onclick={() => S.act('ClearProgrammer')} title="Clear the programmer (Delete)" />
-      <Tool icon={EyeOff} label="Blind" on={live.blind} onclick={() => S.act({ SetBlind: !live.blind })} title="Blind: programmer is not output (Ctrl+P)" />
-      <Tool icon={ParkingSquare} label="Park" onclick={() => S.act({ Park: focusAttr })} title="Park the last touched attribute" />
-      <Tool icon={Fan} label="Fan" onclick={fan} />
+      <Tool icon={Eraser} label="Clear" acc="var(--red-hi)" disabled={!progRows.length} onclick={() => S.act('ClearProgrammer')} title="Clear the programmer (Delete)" />
+      <Tool icon={EyeOff} label="Blind" acc="var(--yellow)" on={live.blind} onclick={() => S.act({ SetBlind: !live.blind })} title="Blind: programmer is not output (Ctrl+P)" />
+      <Tool icon={ParkingSquare} label="Park" acc="var(--blue)" onclick={() => S.act({ Park: focusAttr })} title="Park the last touched attribute" />
+      <Tool icon={Fan} label="Fan" acc="var(--purple)" onclick={fan} />
       <div class="title">Programmer {#if live.blind}<span class="chip" style="background:var(--red)">BLIND</span>{/if}</div>
-      <Tool icon={Film} label="Record Cue" onclick={() => S.act('RecordCue')} title="Record the programmer as the next cue of the selected cuelist" />
-      <Tool icon={Clapperboard} label="Store Scene" onclick={() => S.act('StoreScene')} title="Store the complete look as a scene and play it" />
+      <Tool icon={Film} label="Record Cue" acc="var(--red-hi)" onclick={() => S.act('RecordCue')} title="Record the programmer as the next cue of the selected cuelist" />
+      <Tool icon={Clapperboard} label="Store Scene" acc="var(--green)" onclick={() => S.act('StoreScene')} title="Store the complete look as a scene and play it" />
     </header>
     <div class="body">
       <table class="table">
@@ -299,9 +301,9 @@
     </div>
     <footer class="tabs">
       {#each ['Intensity', 'Position', 'Color', 'Beam'] as k}
-        <button class="tab" class:on={parTab === k} onclick={() => (parTab = k as typeof parTab)}>{k}<span class="cnt">{tabCount(k)}</span></button>
+        <button class="tab" data-k={k[0]} style="--tc:{TC[k]}" class:on={parTab === k} onclick={() => (parTab = k as typeof parTab)}>{k}<span class="cnt">{tabCount(k)}</span></button>
       {/each}
-      <button class="tab" class:on={parTab === 'FX'} onclick={() => (parTab = 'FX')}>FX<span class="cnt">{fxCount}</span></button>
+      <button class="tab" data-k="F" style="--tc:{TC.FX}" class:on={parTab === 'FX'} onclick={() => (parTab = 'FX')}>FX<span class="cnt">{fxCount}</span></button>
     </footer>
   </section>
 </div>
