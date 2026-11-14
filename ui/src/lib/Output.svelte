@@ -20,11 +20,23 @@
     const t = setInterval(async () => (midi = await call('midi_get')), 500)
     return () => clearInterval(t)
   })
-  const targets = [['Go', 'Go'], ['Back', 'Back'], ['Release', 'Release'], ['Level', 'Fader']]
+  // Lernbare Ziele: [Schlüssel, Name, Argumentart] – 'n' = Nummer ab 1, 'a' = Attribut, '' = ohne Argument
+  const targets: [string, string, string][] = [
+    ['Go', 'Go', 'n'], ['Back', 'Back', 'n'], ['Release', 'Release', 'n'], ['Level', 'Playback fader', 'n'],
+    ['Cue', 'Go to cue', 'n'], ['Group', 'Select group', 'n'], ['Effect', 'Toggle effect', 'n'],
+    ['Attr', 'Attribute fader (selection)', 'a'], ['Master', 'Grand master', ''], ['Blackout', 'Blackout', ''],
+    ['Blind', 'Blind', ''], ['Highlight', 'Highlight', ''], ['ClearProgrammer', 'Clear programmer', ''],
+    ['Undo', 'Undo', ''], ['Redo', 'Redo', ''], ['NextFixture', 'Next fixture', ''], ['PrevFixture', 'Previous fixture', ''],
+  ]
+  const MIDI_ATTRS = ['Dimmer', 'Red', 'Green', 'Blue', 'White', 'Amber', 'Uv', 'Pan', 'Tilt', 'Zoom', 'Strobe']
   let tkind = $state('Go')
-  let tlist = $state(0)
+  let tnum = $state(1)
+  let tattr = $state('Dimmer')
+  const targ = $derived(targets.find((t) => t[0] === tkind)![2])
   const learn = (t: unknown) => call('midi_learn', t)
+  const payload = () => (targ === 'n' ? { [tkind]: tnum - 1 } : targ === 'a' ? { Attr: tattr } : tkind)
 </script>
+
 
 <div class="out" style="--w:{S.layout.outW}px">
   <Splitter key="outW" />
@@ -52,22 +64,22 @@
         <label class="f">sACN priority<input type="number" min="0" max="200" bind:value={cfg.sacn_priority} onchange={save} /></label>
       {/if}
     </div>
-    <header><div class="title">MIDI <Info text="Press Learn, then move a control on your MIDI device. Learned controls trigger Go, Back, Release or faders of the chosen cuelist." /></div></header>
+    <header><div class="title">MIDI <Info text="Pick a target, press Learn, then press a key or move a fader on your MIDI device. Notes and CC buttons trigger on press; CC faders are scaled 0–255. Devices are connected automatically." /></div></header>
     <div class="body col">
       {#if midi}
-        <div class="dim">{midi.ports.length ? 'Ports: ' + midi.ports.join(', ') : 'No MIDI device found.'}</div>
+        <div class="dim">{midi.ports.length ? 'Devices: ' + midi.ports.join(', ') : 'No MIDI device found.'}</div>
         <div class="row">
           <select bind:value={tkind}>{#each targets as [k, n]}<option value={k}>{n}</option>{/each}</select>
-          <input type="number" min="1" style="width:60px" value={tlist + 1} onchange={(e) => (tlist = Math.max(0, +e.currentTarget.value - 1))} />
-          <button class="btn" class:on={!!midi.learn} onclick={() => learn(midi.learn ? null : { [tkind]: tlist })}>{midi.learn ? 'Learning…' : 'Learn'}</button>
+          {#if targ === 'n'}<input type="number" min="1" style="width:60px" bind:value={tnum} />{/if}
+          {#if targ === 'a'}<select bind:value={tattr}>{#each MIDI_ATTRS as a}<option>{a}</option>{/each}</select>{/if}
+          <button class="btn" class:on={!!midi.learn} onclick={() => learn(midi.learn ? null : payload())}>{midi.learn ? 'Learning…' : 'Learn'}</button>
         </div>
-        <div class="row">
-          <button class="btn sm" onclick={() => learn('Master')}>Learn Master</button>
-          <button class="btn sm" onclick={() => learn('Blackout')}>Learn Blackout</button>
-        </div>
+        {#if midi.learn}<div class="dim">Waiting for input → {midi.learn}</div>{/if}
+        <div class="dim">Last input: <span class="mono">{midi.last ?? '–'}</span></div>
         {#each midi.binds as b, i}
           <div class="row"><span class="mono">{b.src}</span> → <span>{b.target}</span><span class="spacer"></span><button class="btn sm" onclick={() => call('midi_unbind', i)}>Remove</button></div>
         {/each}
+        {#if !midi.binds.length}<div class="dim">No bindings yet.</div>{/if}
       {/if}
     </div>
   </section>

@@ -194,13 +194,18 @@ impl Core {
                 json!({
                     "ports": m.ports,
                     "learn": m.learn.map(midi::target_name),
-                    "last": m.last.map(midi::source_name),
+                    "last": m.last.map(|(s, v)| format!("{} = {v}", midi::source_name(s))),
                     "binds": m.binds.iter().map(|b| json!({"src": midi::source_name(b.src), "target": midi::target_name(b.target)})).collect::<Vec<_>>(),
                 })
             }
             "midi_learn" => {
                 let t: Option<midi::Target> = serde_json::from_str(body).map_err(err)?;
                 self.midi.lock().unwrap().learn = t;
+                Value::Null
+            }
+            "midi_inject" => {
+                let msg: Vec<u8> = serde_json::from_str(body).map_err(err)?;
+                midi::handle(&self.midi, &self.engine, &msg);
                 Value::Null
             }
             "midi_unbind" => {

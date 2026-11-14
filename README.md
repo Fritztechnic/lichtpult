@@ -29,6 +29,9 @@ cargo run --bin lichtpult-server      # nur zum Testen im Browser (http://127.0.
 cargo test --lib
 ```
 
+## MIDI
+Geräte werden automatisch verbunden (ALSA/CoreMIDI/WinMIDI über `midir`). *Output → MIDI*: Ziel wählen, *Learn*, Taste/Fader am Gerät bedienen. Ziele: Go/Back/Release/Fader/Cue pro Cuelist, Gruppe wählen, Effekt, Attribut-Fader für die Auswahl, Master, Blackout, Blind, Highlight, Programmer leeren, Undo/Redo, nächstes/voriges Fixture. Noten und CC ≥ 64 lösen Tasten aus, CC-Fader werden auf 0–255 skaliert. Bindungen liegen in `midi.json`. Noch offen: LED-Rückmeldung an das Gerät, relative Encoder.
+
 ## Befehlszeile
 Mehrere Befehle mit `;`: `1 thru 8 @ 50` · `1 + 3 - 2 red 255` · `group 1 pal 2` · `go 2` · `back` · `release 1` · `goto 3` · `level 1 200` · `master 128` · `blackout on` · `fx 1` / `fx stop` · `record scene|cue|group|palette color` · `undo` · `clear`
 
