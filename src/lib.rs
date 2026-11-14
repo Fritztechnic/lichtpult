@@ -1,11 +1,13 @@
 //! Lichtpult: Kern ohne UI. UI und (später) Hardware-Pulte steuern die
 //! `Engine` ausschließlich über `Action`s.
 
+pub mod api;
 pub mod cmd;
 pub mod engine;
 pub mod fixture;
 pub mod gdtf;
 pub mod midi;
+pub mod onyx;
 pub mod output;
 
 use engine::{Engine, Show};

@@ -1,31 +1,44 @@
 # Lichtpult
 
-Open-Source-Lichtsteuerung für Bühnentechnik, nativ für Linux, geschrieben in Rust (egui). Flaches, dunkles Pult-Design im Stil klassischer Lichtpulte (Onyx) mit einstellbarer Akzentfarbe (⚙ oben rechts), Icons von [Lucide](https://lucide.dev) (ISC-Lizenz).
-
-```
-cargo run --release
-cargo test
-```
+Open-Source-Lichtsteuerung für Bühnentechnik im Stil von Obsidian Onyx.
+**Tauri 2 + Svelte 5 + TypeScript** (UI) auf einem Rust-Kern (Engine, DMX, Art-Net/sACN, MIDI, GDTF/OFL). Die alte egui-Version liegt unverändert in `archive/egui/`.
 
 ## Aufbau
-- `engine.rs` – Show-Daten, Programmer, Cues, Fades/Tracking, Master/Blackout, DMX-Rendering.
-- `fixture.rs` – Attribute, Fixture-Typen und Import aus der [Open Fixture Library](https://open-fixture-library.org) (JSON).
-- `lib.rs` – Art-Net-Ausgabe (44 Hz), Speichern/Laden (`~/.local/share/lichtpult/show.json`).
-- `main.rs`, `theme.rs` – UI.
+- `src/` – Rust-Bibliothek `lichtpult`: `engine.rs` (Show, Programmer, Cues, Effekte), `cmd.rs` (Befehlszeile), `api.rs` (JSON-API, `Core::call`).
+- `src/bin/server.rs` – Browser-Entwicklungsserver (`/api/<methode>`, liefert `ui/dist`).
+- `src-tauri/` – Desktop-Shell, ein Tauri-Command `api`.
+- `ui/` – Svelte-Frontend (Compose, Playback, Plan, Patch, Output).
 
-**Alle Bedienelemente steuern die Engine nur über `engine::Action`.** UI, MIDI und später
-Hardware-Pulte (z. B. Behringer X-Touch, Onyx NX-Touch) werden auf dieselben Aktionen abgebildet.
+Alle Bedienelemente steuern die Engine nur über `engine::Action`.
 
-## Fixtures importieren
-OFL-JSON-Dateien oder ganze Ordner (z. B. ein Klon des OFL-Repos) ins Fenster ziehen oder im Patch-Tab den Pfad eintragen.
-Jeder Modus wird ein eigener Typ. Fine-Kanäle (16 Bit) und noch nicht unterstützte Funktionen (Gobos, Farbräder, Strobe …)
-belegen ihre DMX-Adresse, bleiben aber bei 0.
+## Oberfläche (`ui/src`)
+- `store.svelte.ts` – Zustand: Polling der Engine, `act`/`cmd`, Rechtsklick-Menü, Fenster, Dialoge.
+- `App.svelte` – Rahmen: Kopfzeile, linke Navigation, Bank, Befehlszeile.
+- Ansichten: `Compose` (Fixture Center, Programmer, Parameter), `Presets`, `Playback`, `Plan`, `Patch`, `Output`, `Universes` (Belegung, Live-Raster, Auto-Adresse).
+- `Windows.svelte` – frei verschiebbare Fenster: Editoren (Cue, Cuelist, FX, Gruppe, Preset, Fixture), Keypad und alle Ansichten
+  (Menü *Windows*, Liste in `WIN_VIEWS`). `CueValues` und `Status` gibt es nur als Fenster.
+- Auswahl: Klick, Ziehen, Strg (umschalten), Shift (Bereich); Gruppen mit Strg/Shift hinzufügen/entfernen; Tabellen haben Mehrfachauswahl.
+- Anpassen: Trennlinien ziehen (über der Bank, zwischen den Compose-Spalten/-Zeilen; Doppelklick = Standard, *Windows → Reset layout*), gespeichert im Browser-Speicher. Patch, Playback, Output, Stage und Universes haben eine ziehbare rechte Spalte. Tastatur: Strg+1–7 Ansicht, Strg+A alles, Esc schließt Menü/Fenster/Auswahl. Ansicht und Fenster werden gemerkt; *Windows* bietet Workspaces speichern/laden sowie Tile/Cascade. Eigene Fixture-Typen (bearbeiten/löschen im Patch): *Patch → Create fixture type…* (`FixtureEditor`).
 
-## Entwicklung
-`LICHTPULT_SHOT=/tmp/x.ppm [LICHTPULT_VIEW=stage|patch|output] [LICHTPULT_SELECT=1] cargo run` speichert den Fensterinhalt und beendet die App.
+## Starten
+```
+cd ui && npm install && npm run build && cd ..
+cargo tauri dev                       # Desktop-App (cargo install tauri-cli --version "^2")
+cargo tauri build                     # fertige Desktop-App / Installer
+cargo run --bin lichtpult-server      # nur zum Testen im Browser (http://127.0.0.1:8787)
+cargo test --lib
+```
 
-## Tastatur
-`Leertaste` GO · `Backspace` Back · `Esc` Auswahl löschen · `Strg+A` alle · `Strg+Z` / `Strg+Shift+Z` Undo/Redo · `Strg+L` Befehlszeile
+## MIDI
+Geräte werden automatisch verbunden (ALSA/CoreMIDI/WinMIDI über `midir`). *Output → MIDI*: Ziel wählen, *Learn*, Taste/Fader am Gerät bedienen. Ziele: Go/Back/Release/Fader/Cue pro Cuelist, Gruppe wählen, Effekt, Attribut-Fader für die Auswahl, Master, Blackout, Blind, Highlight, Programmer leeren, Undo/Redo, nächstes/voriges Fixture. Noten und CC ≥ 64 lösen Tasten aus, CC-Fader werden auf 0–255 skaliert. Bindungen liegen in `midi.json`. Noch offen: LED-Rückmeldung an das Gerät, relative Encoder.
+
+## Onyx-Import
+
+*Settings → Import Onyx show…* liest eine `.OnyxShow`-Datei (ZIP mit SQL-Server-Backup) direkt ein,
+ohne SQL Server: `src/onyx.rs` liest die Datenseiten selbst. Übernommen werden Geräte (Typ, Universum,
+Adresse), normale Gruppen sowie Cuelists mit Cues (Fade, Delay, Werte). Nicht übernommen: Presets, Effekte,
+Layout, Makros, Playback-Zuordnung, Pixel-/virtuelle Kanäle und Kanäle ohne passendes Attribut.
+Hinweise dazu zeigt die Statusleiste nach dem Import.
 
 ## Befehlszeile
 Mehrere Befehle mit `;`: `1 thru 8 @ 50` · `1 + 3 - 2 red 255` · `group 1 pal 2` · `go 2` · `back` · `release 1` · `goto 3` · `level 1 200` · `master 128` · `blackout on` · `fx 1` / `fx stop` · `record scene|cue|group|palette color` · `undo` · `clear`

@@ -269,6 +269,11 @@ impl Show {
         self.channels(f).contains(&Some(a))
     }
 
+    /// Farb-Fixtures ohne eigenen Dimmer bekommen einen virtuellen Dimmer, der die Farbkanäle skaliert.
+    pub fn virtual_dim(&self, f: &Fixture) -> bool {
+        !self.has(f, Attr::Dimmer) && [Attr::Red, Attr::Green, Attr::Blue, Attr::White].iter().any(|&c| self.has(f, c))
+    }
+
     /// Belegte DMX-Adressen (1-basiert, Ende exklusiv).
     pub fn range(&self, f: &Fixture) -> std::ops::Range<u16> {
         f.address..f.address + self.channels(f).len() as u16
@@ -300,9 +305,13 @@ impl Show {
 
 /// Alles, was ein Bedienelement (UI, MIDI, Pult) tun kann.
 /// Hardware-Controller werden auf diese Aktionen abgebildet.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Action {
     AddTypes(Vec<FixtureType>),
+    /// Fixture-Typ ersetzen (Name muss frei bleiben); gepatchte Fixtures behalten den Index.
+    UpdateType(usize, FixtureType),
+    /// Ungenutzten Fixture-Typ löschen; Indizes der übrigen Typen rücken nach.
+    RemoveType(usize),
     Select(u32),
     Toggle(u32),
     /// Auswahl um alle Fixtures mit ID von..=bis erweitern.
@@ -321,6 +330,7 @@ pub enum Action {
     /// Werte der Auswahl linear von `from` nach `to` auffächern.
     Fan(Attr, u8, u8, bool),
     SetBlind(bool),
+    Highlight(bool),
     Park(Attr),
     Unpark,
     /// Nächsten Cue sofort ohne Überblendung.
@@ -441,6 +451,8 @@ impl Action {
                 | SetEffect(..)
                 | DeleteEffect(_)
                 | AddFixtures { .. }
+                | UpdateType(..)
+                | RemoveType(_)
                 | RemoveFixture(_)
                 | AutoAddress(_)
         )
@@ -489,6 +501,9 @@ pub struct Engine {
     pub blackout: bool,
     /// Blind: Programmer wird nicht ausgegeben.
     pub blind: bool,
+    pub highlight: bool,
+    /// Zähler, der bei jeder Änderung der gespeicherten Show wächst.
+    pub rev: u64,
     /// Geparkte Werte überschreiben alles andere.
     pub parked: Values,
     pub fade_speed: f32,
@@ -534,6 +549,8 @@ impl Engine {
             master: 255,
             blackout: false,
             blind: false,
+            highlight: false,
+            rev: 1,
             parked: Values::new(),
             fade_speed: 1.0,
             last_selected: None,
@@ -550,7 +567,9 @@ impl Engine {
     }
 
     pub fn load_show(&mut self, show: Show) {
+        let rev = self.rev + 1;
         *self = Engine::new(show);
+        self.rev = rev;
     }
 
     /// Aktive Cuelist.
@@ -701,6 +720,9 @@ impl Engine {
     }
 
     pub fn apply(&mut self, action: Action) {
+        if action.edits_show() || matches!(action, Action::Undo | Action::Redo) {
+            self.rev += 1;
+        }
         if action.edits_show() {
             self.snapshot(&action);
         }
@@ -775,6 +797,7 @@ impl Engine {
                 }
             }
             Action::SetBlind(b) => self.blind = b,
+            Action::Highlight(b) => self.highlight = b,
             Action::Park(attr) => {
                 for f in self.show.fixtures.iter().filter(|f| self.selection.contains(&f.id)) {
                     if self.show.has(f, attr) {
@@ -814,7 +837,7 @@ impl Engine {
             Action::FadeSpeed(v) => self.fade_speed = v.clamp(0.1, 10.0),
             Action::SetAttr(a, v) => {
                 for f in self.show.fixtures.iter().filter(|f| self.selection.contains(&f.id)) {
-                    if self.show.has(f, a) {
+                    if self.show.has(f, a) || (a == Attr::Dimmer && self.show.virtual_dim(f)) {
                         self.programmer.entry(f.id).or_default().insert(a, v);
                     }
                 }
@@ -822,7 +845,7 @@ impl Engine {
             Action::ClearProgrammer => self.programmer.clear(),
             Action::RecordGroup => {
                 if !self.selection.is_empty() {
-                    let name = format!("Gruppe {}", self.show.groups.len() + 1);
+                    let name = format!("Group {}", self.show.groups.len() + 1);
                     self.show.groups.push(Group { name, ids: self.selection.iter().copied().collect() });
                 }
             }
@@ -942,9 +965,13 @@ impl Engine {
                     for a in self.show.channels(f).iter().flatten().filter(|a| Attr::ALL.contains(a)) {
                         values.entry(f.id).or_default().insert(*a, self.value_of(&play, f.id, *a).0);
                     }
+                    if self.show.virtual_dim(f) {
+                        let d = self.programmer.get(&f.id).and_then(|m| m.get(&Attr::Dimmer)).or_else(|| play.get(&f.id).and_then(|m| m.get(&Attr::Dimmer))).copied().unwrap_or(255);
+                        values.entry(f.id).or_default().insert(Attr::Dimmer, d);
+                    }
                 }
                 if !values.is_empty() {
-                    let name = format!("Szene {}", self.show.lists[l].cues.len() + 1);
+                    let name = format!("Scene {}", self.show.lists[l].cues.len() + 1);
                     self.show.lists[l].cues.push(Cue { name, fade: 1.0, follow: None, values, delay: 0.0, comment: String::new(), block: true });
                     self.programmer.clear();
                     let last = self.show.lists[l].cues.len() - 1;
@@ -1148,6 +1175,22 @@ impl Engine {
                     }
                 }
             }
+            Action::UpdateType(i, t) => {
+                let taken = self.show.types.iter().enumerate().any(|(j, x)| j != i && x.name == t.name);
+                if i < self.show.types.len() && !taken {
+                    self.show.types[i] = t;
+                }
+            }
+            Action::RemoveType(i) => {
+                if i < self.show.types.len() && !self.show.fixtures.iter().any(|f| f.ty == i) {
+                    self.show.types.remove(i);
+                    for f in &mut self.show.fixtures {
+                        if f.ty > i {
+                            f.ty -= 1;
+                        }
+                    }
+                }
+            }
             Action::RemoveFixture(id) => {
                 self.show.fixtures.retain(|f| f.id != id);
                 self.selection.remove(&id);
@@ -1218,6 +1261,10 @@ impl Engine {
         let prog = if self.blind { None } else { self.programmer.get(&f.id).and_then(|m| m.get(&a)).copied() };
         let parked = self.parked.get(&f.id).and_then(|m| m.get(&a)).copied();
         let mut v = parked.or(prog).unwrap_or_else(|| get(play, f.id, a)) as f32;
+        if a != Attr::Dimmer && a.kind() == Kind::Color && a.is_intensity_like() && self.show.virtual_dim(f) {
+            let d = self.parked.get(&f.id).and_then(|m| m.get(&Attr::Dimmer)).copied().or(if self.blind { None } else { self.programmer.get(&f.id).and_then(|m| m.get(&Attr::Dimmer)).copied() }).or_else(|| play.get(&f.id).and_then(|m| m.get(&Attr::Dimmer)).copied()).unwrap_or(255);
+            v *= d as f32 / 255.0;
+        }
         for &(e, phase) in fx {
             let depth = e.size as f32 / 255.0;
             match e.target {
@@ -1250,6 +1297,9 @@ impl Engine {
                     }
                 }
             }
+        }
+        if self.highlight && a.is_intensity_like() && self.selection.contains(&f.id) {
+            return 255.0;
         }
         v.clamp(0.0, 255.0)
     }
@@ -1314,6 +1364,27 @@ mod tests {
         e.apply(Action::DuplicateCue(0));
         assert_eq!(e.list().cues.len(), 4);
         assert_eq!(e.cue(), Some(3));
+    }
+
+    #[test]
+    fn remove_type_only_when_unused_and_reindexes() {
+        let mut e = Engine::new(Show { types: builtin_types(), ..Show::default() });
+        e.apply(Action::AddFixtures { ty: 3, count: 1, universe: 1, address: 1 });
+        let n = e.show.types.len();
+        e.apply(Action::RemoveType(3));
+        assert_eq!(e.show.types.len(), n);
+        e.apply(Action::RemoveType(0));
+        assert_eq!(e.show.types.len(), n - 1);
+        assert_eq!(e.show.fixtures[0].ty, 2);
+    }
+
+    #[test]
+    fn update_type_rejects_duplicate_name() {
+        let mut e = Engine::new(Show { types: builtin_types(), ..Show::default() });
+        let mut t = e.show.types[1].clone();
+        t.name = e.show.types[0].name.clone();
+        e.apply(Action::UpdateType(1, t));
+        assert_ne!(e.show.types[1].name, e.show.types[0].name);
     }
 
     #[test]
@@ -1530,6 +1601,20 @@ mod tests {
         e.apply(Action::GotoCue(1));
         e.tick(5.0);
         assert_eq!(e.frames[&1][4], 100);
+    }
+
+    #[test]
+    fn virtual_dimmer_scales_rgb_and_highlight_forces_full() {
+        let mut e = Engine::new(Show { types: builtin_types(), ..Show::default() });
+        e.apply(Action::AddFixtures { ty: 1, count: 1, universe: 0, address: 1 });
+        e.apply(Action::SelectAll);
+        e.apply(Action::SetAttr(Attr::Red, 200));
+        e.apply(Action::SetAttr(Attr::Dimmer, 128));
+        e.tick(0.0);
+        assert_eq!(e.frames[&0][0], 100);
+        e.apply(Action::Highlight(true));
+        e.tick(0.0);
+        assert_eq!(e.frames[&0][0], 255);
     }
 
     #[test]
