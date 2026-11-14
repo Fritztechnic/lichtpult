@@ -1,6 +1,9 @@
 import { call } from './api'
 import type { Live, Show, FixtureType } from './lib/types'
 
+export type MenuItem = { label?: string; run?: () => unknown; danger?: boolean; disabled?: boolean; sep?: boolean }
+export type Win = { id: string; kind: 'keypad' | 'cue' | 'list' | 'fx' | 'group' | 'preset' | 'fixture'; arg: number; x: number; y: number; w: number; h: number; z: number }
+
 class Store {
   live = $state<Live | null>(null)
   show = $state<Show | null>(null)
@@ -11,9 +14,10 @@ class Store {
   error = $state(false)
   history = $state<string[]>([])
   settings = $state(false)
-  keypad = $state(false)
   cmdText = $state('')
-  quick = $state(false)
+  ctx = $state<{ x: number; y: number; items: MenuItem[] } | null>(null)
+  wins = $state<Win[]>([])
+  private z = 10
   dialog = $state<{ title: string; value: string; resolve: (v: string | null) => void } | null>(null)
   private busy = false
   private showRev = -1
@@ -70,6 +74,28 @@ class Store {
   ask(title: string, value = ''): Promise<string | null> {
     return new Promise((resolve) => (this.dialog = { title, value, resolve }))
   }
+
+  menu(e: MouseEvent, items: MenuItem[]) {
+    e.preventDefault()
+    e.stopPropagation()
+    this.ctx = { x: e.clientX, y: e.clientY, items }
+  }
+
+  openWin(kind: Win['kind'], arg = 0) {
+    const id = kind + ':' + arg
+    const ex = this.wins.find((w) => w.id === id)
+    if (ex) { ex.z = ++this.z; return }
+    const n = this.wins.length
+    const big = kind === 'keypad' ? { w: 260, h: 430 } : { w: 340, h: 300 }
+    this.wins.push({ id, kind, arg, x: 380 + n * 28, y: 90 + n * 28, ...big, z: ++this.z })
+  }
+  toggleWin(kind: Win['kind'], arg = 0) {
+    const id = kind + ':' + arg
+    if (this.wins.some((w) => w.id === id)) this.closeWin(id)
+    else this.openWin(kind, arg)
+  }
+  closeWin(id: string) { this.wins = this.wins.filter((w) => w.id !== id) }
+  focusWin(id: string) { const w = this.wins.find((x) => x.id === id); if (w) w.z = ++this.z }
 
   get hasProgrammer() {
     return !!this.live && Object.keys(this.live.programmer).length > 0

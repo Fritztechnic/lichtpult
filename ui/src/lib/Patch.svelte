@@ -83,7 +83,7 @@
         <thead><tr><th style="width:56px">ID</th><th>Name</th><th>Type</th><th style="width:60px">Ch</th><th style="width:80px">Univ</th><th style="width:80px">Addr</th><th style="width:40px"></th></tr></thead>
         <tbody>
           {#each rows as f}
-            <tr class:sel={live.selection.includes(f.id)}>
+            <tr class:sel={live.selection.includes(f.id)} oncontextmenu={(e) => S.menu(e, [{ label: 'Select', run: () => S.act({ Select: f.id }) }, { label: 'Edit…', run: () => S.openWin('fixture', f.id) }, { sep: true }, { label: 'Remove fixture', danger: true, run: () => S.act({ RemoveFixture: f.id }) }])}>
               <td class="num mono" onclick={() => S.act({ Toggle: f.id })}>{f.id}</td>
               <td><input value={f.name} onchange={(e) => S.act({ RenameFixture: [f.id, e.currentTarget.value] })} /></td>
               <td class="dim">{show.types[f.ty]?.name}</td>

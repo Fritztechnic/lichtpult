@@ -7,7 +7,8 @@
   import Plan from './lib/Plan.svelte'
   import Patch from './lib/Patch.svelte'
   import Output from './lib/Output.svelte'
-  import Keypad from './lib/Keypad.svelte'
+  import Windows from './lib/Windows.svelte'
+  import Ctx from './lib/Ctx.svelte'
   import KeyboardIcon from '@lucide/svelte/icons/calculator'
   import Fader from './lib/Fader.svelte'
   import Sliders from '@lucide/svelte/icons/sliders-vertical'
@@ -99,7 +100,7 @@
       <div class="msg" class:err={S.error}>{S.msg}</div>
       <span class="stat">{live.selection.length ? `${live.selection.length} fixture${live.selection.length > 1 ? 's' : ''} selected` : 'No fixture or zone selected'}</span>
       <span class="spacer"></span>
-      <button class="btn sm" class:on={S.keypad} onclick={() => (S.keypad = !S.keypad)} aria-label="Keypad"><KeyboardIcon size={14} /> Keypad</button>
+      <button class="btn sm" class:on={S.wins.some((w) => w.kind === 'keypad')} onclick={() => S.toggleWin('keypad')} aria-label="Keypad"><KeyboardIcon size={14} /> Keypad</button>
       <button class="btn sm" disabled={!live.can_undo} onclick={() => S.act('Undo')} aria-label="Undo"><Undo size={14} /></button>
       <button class="btn sm" disabled={!live.can_redo} onclick={() => S.act('Redo')} aria-label="Redo"><Redo size={14} /></button>
       <span class="gm">
@@ -151,7 +152,7 @@
           {@const c = lists[li]}
           {#if c}
             {@const p = live.players[li]}
-            <div class="bcell" class:act={li === act}>
+            <div class="bcell" class:act={li === act} role="presentation" oncontextmenu={(e) => S.menu(e, [{ label: 'Go', run: () => S.play('Go', li) }, { label: 'Back', run: () => S.play('Back', li) }, { label: 'Release', run: () => S.play('ReleaseList', li) }, { label: 'Select', run: () => S.act({ SelectList: li }) }, { sep: true }, { label: 'Edit…', run: () => S.openWin('list', li) }, { label: 'Rename…', run: async () => { const n = await S.ask('Rename cuelist', c.name); if (n) S.act({ RenameList: [li, n] }) } }, { sep: true }, { label: 'Delete', danger: true, disabled: lists.length < 2, run: () => S.act({ DeleteList: li }) }])}>
               <button class="bhead" onclick={() => S.act({ SelectList: li })} style="--tc:{tcolor(li)}">
                 <span class="n">{li + 1}</span><span class="nm">{c.name}</span>
               </button>
@@ -163,7 +164,7 @@
               <div class="bfoot mono">#{li + 1} <span class="num">{p?.cue != null ? `${p.cue + 1}/${c.cues.length}` : `–/${c.cues.length}`}</span></div>
             </div>
           {:else}
-            <button class="bcell empty" onclick={() => S.act('AddList')} title="Add cuelist"><span class="n">{li + 1}</span></button>
+            <button class="bcell empty" onclick={() => S.act('AddList')} oncontextmenu={(e) => S.menu(e, [{ label: 'Add cuelist', run: () => S.act('AddList') }])} title="Add cuelist"><span class="n">{li + 1}</span></button>
           {/if}
         {/each}
       </div>
@@ -177,7 +178,8 @@
     </div>
   </div>
 
-  {#if S.keypad}<Keypad />{/if}
+  <Windows />
+  <Ctx />
 
   {#if S.dialog}
     {@const d = S.dialog}

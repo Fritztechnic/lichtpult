@@ -66,6 +66,7 @@
           {#each list.cues as c, i}
             <tr class:sel={row === i} class:cur={player?.cue === i} class:drop={dragOver === i && dragFrom !== i}
               onclick={() => (row = i)} ondblclick={() => S.act({ GotoCue: i })}
+              oncontextmenu={(e) => { row = i; S.menu(e, [{ label: 'Go to cue', run: () => S.act({ GotoCue: i }) }, { label: 'Edit…', run: () => S.openWin('cue', i) }, { label: 'Update from programmer', run: () => S.act({ UpdateCue: i }) }, { label: 'Duplicate', run: () => S.act({ DuplicateCue: i }) }, { label: 'Move up', disabled: i === 0, run: () => S.act({ MoveCue: [i, i - 1] }) }, { label: 'Move down', disabled: i === list.cues.length - 1, run: () => S.act({ MoveCue: [i, i + 1] }) }, { sep: true }, { label: 'Delete', danger: true, run: () => { S.act({ DeleteCue: i }); row = null } }]) }}
               ondragover={(e) => { e.preventDefault(); dragOver = i }} ondrop={() => drop(i)}>
               <td draggable="true" ondragstart={(e) => { dragFrom = i; e.dataTransfer?.setData('text/plain', String(i)) }} ondragend={() => (dragFrom = dragOver = null)} style="cursor:grab;color:#777"><GripVertical size={14} /></td>
               <td class="num mono">{i + 1}</td>
@@ -100,7 +101,7 @@
     <div class="body">
       <div class="lists">
         {#each show.lists as c, i}
-          <div class="lrow" class:act={i === l}>
+          <div class="lrow" class:act={i === l} role="presentation" oncontextmenu={(e) => S.menu(e, [{ label: 'Go', run: () => S.play('Go', i) }, { label: 'Back', run: () => S.play('Back', i) }, { label: 'Release', run: () => S.play('ReleaseList', i) }, { label: 'Select', run: () => S.act({ SelectList: i }) }, { sep: true }, { label: 'Edit…', run: () => S.openWin('list', i) }, { label: c.looped ? 'Loop off' : 'Loop on', run: () => S.act({ SetLooped: [i, !c.looped] }) }, { label: c.chase ? 'Chase off' : 'Chase on', run: () => S.act({ SetChase: [i, !c.chase] }) }, { sep: true }, { label: 'Delete', danger: true, disabled: show.lists.length < 2, run: () => S.act({ DeleteList: i }) }])}>
             <button class="pad ph" class:act={i === l} onclick={() => S.act({ SelectList: i })}>
               <span class="sw" style="background:{tcolor(c)}"></span>
               <span class="n">{i + 1}</span><span class="nm">{c.name}</span>

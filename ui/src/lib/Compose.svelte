@@ -56,6 +56,10 @@
       if (n) S.act({ RenameGroup: [i, n] })
     }
   }
+  async function groupRename(i: number) {
+    const n = await S.ask('Rename group', show.groups[i].name)
+    if (n) S.act({ RenameGroup: [i, n] })
+  }
   async function presetClick(i: number) {
     if (mode === 'apply' || mode === 'record') S.act({ ApplyPalette: i })
     else if (mode === 'update') S.act({ UpdatePalette: i })
@@ -189,21 +193,21 @@
       {#if fcTab === 'groups'}
         <div class="padgrid" style="--cols:6">
           {#each show.groups as g, i}
-            <button class="pad" onclick={() => groupClick(i)}><span class="sw" style="background:{GC[i % GC.length]}"></span><span class="n">{i + 1}</span><span class="nm">{g.name}</span><span class="v">{g.ids.length}</span></button>
+            <button class="pad" onclick={() => groupClick(i)} oncontextmenu={(e) => S.menu(e, [{ label: 'Select', run: () => S.act({ SelectGroup: i }) }, { label: 'Edit…', run: () => S.openWin('group', i) }, { label: 'Update from selection', run: () => S.act({ UpdateGroup: i }) }, { label: 'Rename…', run: () => groupRename(i) }, { sep: true }, { label: 'Delete', danger: true, run: () => S.act({ DeleteGroup: i }) }])}><span class="sw" style="background:{GC[i % GC.length]}"></span><span class="n">{i + 1}</span><span class="nm">{g.name}</span><span class="v">{g.ids.length}</span></button>
           {/each}
-          {#each Array(fill(show.groups.length, 6)) as _, k}<div class="cellx"><i>{show.groups.length + k + 1}</i></div>{/each}
+          {#each Array(fill(show.groups.length, 6)) as _, k}<div class="cellx" role="presentation" oncontextmenu={(e) => S.menu(e, [{ label: 'Record group from selection', disabled: !live.selection.length, run: recGroup }])}><i>{show.groups.length + k + 1}</i></div>{/each}
         </div>
       {:else}
         <div class="padgrid" style="--cols:6">
           {#each fcIds as f}
             {@const lf = liveFx.get(f.id)}
             <button class="pad" class:sel={sel.has(f.id)} class:last={live.last_selected === f.id} class:conflict={live.conflicts.includes(f.id)}
-              onclick={(e) => clickFixture(f.id, e)}>
+              onclick={(e) => clickFixture(f.id, e)} oncontextmenu={(e) => S.menu(e, [{ label: 'Select only', run: () => S.act({ Select: f.id }) }, { label: sel.has(f.id) ? 'Remove from selection' : 'Add to selection', run: () => S.act({ Toggle: f.id }) }, { label: 'Select all', run: () => S.act('SelectAll') }, { label: 'Deselect all', run: () => S.act('ClearSelection') }, { sep: true }, { label: 'Edit…', run: () => S.openWin('fixture', f.id) }, { label: 'Rename…', run: async () => { const n = await S.ask('Rename fixture', f.name); if (n) S.act({ RenameFixture: [f.id, n] }) } }, { label: 'Record group from selection', run: recGroup }, { sep: true }, { label: 'Remove fixture', danger: true, run: () => S.act({ RemoveFixture: f.id }) }])}>
               <span class="sw" style="background:rgb({lf?.rgb.join(',') ?? '60,60,60'})"></span>
               <span class="n">{f.id}</span><span class="nm">{f.name}</span><span class="v">{Math.round((lf?.level ?? 0) * 100)}%</span>
             </button>
           {/each}
-          {#each Array(fill(fcIds.length, 6)) as _, k}<div class="cellx"><i>{fcIds.length + k + 1}</i></div>{/each}
+          {#each Array(fill(fcIds.length, 6)) as _, k}<div class="cellx" role="presentation" oncontextmenu={(e) => S.menu(e, [{ label: 'Select all', run: () => S.act('SelectAll') }, { label: 'Deselect all', run: () => S.act('ClearSelection') }, { label: 'Invert selection', run: () => S.act('InvertSelection') }])}><i>{fcIds.length + k + 1}</i></div>{/each}
         </div>
       {/if}
     </div>
@@ -225,12 +229,12 @@
     <div class="body">
       <div class="padgrid" style="--cols:5">
         {#each presets as { p, i }}
-          <button class="pad" onclick={() => presetClick(i)}>
+          <button class="pad" onclick={() => presetClick(i)} oncontextmenu={(e) => S.menu(e, [{ label: 'Apply', run: () => S.act({ ApplyPalette: i }) }, { label: 'Edit…', run: () => S.openWin('preset', i) }, { label: 'Update from programmer', run: () => S.act({ UpdatePalette: i }) }, { label: 'Rename…', run: async () => { const n = await S.ask('Rename preset', p.name); if (n) S.act({ RenamePalette: [i, n] }) } }, { sep: true }, { label: 'Delete', danger: true, run: () => S.act({ DeletePalette: i }) }])}>
             <span class="sw" style="background:{p.kind === 'Color' ? `rgb(${p.values.Red ?? 0},${p.values.Green ?? 0},${p.values.Blue ?? 0})` : TC[p.kind]}"></span>
             <span class="n">{i + 1}</span><span class="nm">{p.name}</span>
           </button>
         {/each}
-        {#each Array(fill(presets.length, 5)) as _, k}<div class="cellx"><i>{presets.length + k + 1}</i></div>{/each}
+        {#each Array(fill(presets.length, 5)) as _, k}<div class="cellx" role="presentation" oncontextmenu={(e) => S.menu(e, [{ label: `Record ${pTab} preset`, run: recPreset }])}><i>{presets.length + k + 1}</i></div>{/each}
       </div>
     </div>
     <footer class="tabs">
@@ -255,7 +259,7 @@
         <thead><tr><th style="width:44px">ID</th><th>Name</th>{#each progCols as a}<th>{ATTR_LABEL[a] ?? a}</th>{/each}</tr></thead>
         <tbody>
           {#each progRows as id}
-            <tr class:sel={sel.has(id)}>
+            <tr class:sel={sel.has(id)} oncontextmenu={(e) => S.menu(e, [{ label: 'Select fixture', run: () => S.act({ Select: id }) }, { label: 'Clear programmer', danger: true, run: () => S.act('ClearProgrammer') }])}>
               <td style="background:#16401f" class="mono">{id}</td><td>{fxName(id)}</td>
               {#each progCols as a}<td class="num mono">{live.programmer[id]?.[a] != null ? pct(live.programmer[id][a]) : ''}</td>{/each}
             </tr>
@@ -289,7 +293,7 @@
           </div>
           <div class="padgrid" style="margin-top:6px">
             {#each show.effects as e, i}
-              <button class="pad" class:act={live.fx_running[i]} style={fxSel === i ? 'outline:2px solid var(--orange)' : ''} onclick={() => (fxSel = i)}>
+              <button class="pad" class:act={live.fx_running[i]} style={fxSel === i ? 'outline:2px solid var(--orange)' : ''} onclick={() => (fxSel = i)} ondblclick={() => S.openWin('fx', i)} oncontextmenu={(e) => S.menu(e, [{ label: live.fx_running[i] ? 'Stop' : 'Start', run: () => S.act({ ToggleEffect: i }) }, { label: 'Edit…', run: () => S.openWin('fx', i) }, { sep: true }, { label: 'Delete', danger: true, run: () => S.act({ DeleteEffect: i }) }])}>
                 <span class="n">{i + 1}</span><span class="nm">{e.name}</span><span class="v">{e.shape}</span></button>
             {/each}
           </div>
