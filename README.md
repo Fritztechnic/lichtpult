@@ -18,6 +18,7 @@ Alle Bedienelemente steuern die Engine nur über `engine::Action`.
 - `Windows.svelte` – frei verschiebbare Fenster: Editoren (Cue, Cuelist, FX, Gruppe, Preset, Fixture), Keypad und alle Ansichten
   (Menü *Windows*, Liste in `WIN_VIEWS`). `CueValues` und `Status` gibt es nur als Fenster.
 - Auswahl: Klick, Ziehen, Strg (umschalten), Shift (Bereich); Gruppen mit Strg/Shift hinzufügen/entfernen; Tabellen haben Mehrfachauswahl.
+- Anpassen: Trennlinien ziehen (über der Bank, zwischen den Compose-Spalten/-Zeilen; Doppelklick = Standard, *Windows → Reset layout*), gespeichert im Browser-Speicher. Eigene Fixture-Typen: *Patch → Create fixture type…* (`FixtureEditor`).
 
 ## Starten
 ```

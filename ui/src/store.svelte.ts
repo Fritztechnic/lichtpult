@@ -4,7 +4,9 @@ import { call } from './api'
 import { WIN_VIEWS, type Live, type Show, type FixtureType } from './lib/types'
 
 export type MenuItem = { label?: string; run?: () => unknown; danger?: boolean; disabled?: boolean; sep?: boolean }
-export type Win = { id: string; kind: 'keypad' | 'view' | 'cue' | 'list' | 'fx' | 'group' | 'preset' | 'fixture'; arg: number; x: number; y: number; w: number; h: number; z: number }
+export type Layout = { bankH: number; cw: number; rh: number }
+const DEFAULT_LAYOUT: Layout = { bankH: 190, cw: 0.53, rh: 0.54 }
+export type Win = { id: string; kind: 'keypad' | 'view' | 'typedit' | 'cue' | 'list' | 'fx' | 'group' | 'preset' | 'fixture'; arg: number; x: number; y: number; w: number; h: number; z: number }
 
 class Store {
   live = $state<Live | null>(null)
@@ -18,6 +20,10 @@ class Store {
   settings = $state(false)
   cmdText = $state('')
   ctx = $state<{ x: number; y: number; items: MenuItem[] } | null>(null)
+  // Größe der Bereiche (Bank-Höhe in px, Compose-Spalten-/Zeilenanteil); bleibt im Browser-Speicher erhalten
+  layout = $state<Layout>({ ...DEFAULT_LAYOUT, ...JSON.parse(localStorage.getItem('lichtpult.layout') ?? '{}') })
+  saveLayout() { localStorage.setItem('lichtpult.layout', JSON.stringify(this.layout)) }
+  resetLayout() { this.layout = { ...DEFAULT_LAYOUT }; this.saveLayout() }
   wins = $state<Win[]>([])
   prevSel: number[] = []
   private z = 10
@@ -98,7 +104,7 @@ class Store {
     if (ex) { ex.z = ++this.z; return }
     const n = this.wins.length
     const v = kind === 'view' ? WIN_VIEWS[arg] : null
-    const big = kind === 'keypad' ? { w: 260, h: 430 } : v ? { w: v.w, h: v.h } : { w: 340, h: 300 }
+    const big = kind === 'keypad' ? { w: 260, h: 430 } : kind === 'typedit' ? { w: 400, h: 470 } : v ? { w: v.w, h: v.h } : { w: 340, h: 300 }
     this.wins.push({ id, kind, arg, x: 380 + n * 28, y: 90 + n * 28, ...big, z: ++this.z })
   }
   toggleWin(kind: Win['kind'], arg = 0) {

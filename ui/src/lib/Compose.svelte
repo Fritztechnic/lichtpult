@@ -7,6 +7,7 @@
   import Tool from './Tool.svelte'
   import Info from './Info.svelte'
   import { ATTR_COLOR, ATTR_LABEL, KIND_OF, SHAPES, TARGETS, type Kind } from './types'
+  import { startDrag } from './split'
   import Scissors from '@lucide/svelte/icons/scissors'
   import Undo2 from '@lucide/svelte/icons/undo-2'
   import Layers from '@lucide/svelte/icons/layers'
@@ -72,6 +73,17 @@
   const groupsOf = (id: number) => show.groups.map((g, i) => ({ g, i })).filter((x) => x.g.ids.includes(id))
 
   let typeFilter = $state(-1)
+  // Trennlinien im Hauptfenster: Anteile 20-80 %, gespeichert in `S.layout`
+  let box = $state<HTMLDivElement>()!
+  const clamp = (v: number) => Math.min(0.8, Math.max(0.2, v))
+  function dragCol(e: PointerEvent) {
+    const w = box.clientWidth, c0 = S.layout.cw
+    startDrag(e, (dx) => (S.layout.cw = clamp(c0 + dx / w)), () => S.saveLayout())
+  }
+  function dragRow(e: PointerEvent) {
+    const h = box.clientHeight, r0 = S.layout.rh
+    startDrag(e, (_, dy) => (S.layout.rh = clamp(r0 + dy / h)), () => S.saveLayout())
+  }
   // Slice: teilt die Auswahl in n gleich große Teile und wählt reihum einen davon
   let slice = $state({ n: 0, k: 0, last: '' })
   async function sliceSel() {
@@ -224,7 +236,11 @@
 </script>
 
 <svelte:window onkeydown={fkey} onpointerup={() => (dragging = false)} />
-<div class="compose" class:solo={part !== 'all'}>
+<div class="compose" class:solo={part !== 'all'} bind:this={box} style="--cw:{S.layout.cw};--rh:{S.layout.rh};--cf:{S.layout.cw}fr;--cg:{1 - S.layout.cw}fr;--rf:{S.layout.rh}fr;--rg:{1 - S.layout.rh}fr">
+  {#if part === 'all'}
+    <div class="hs" role="separator" aria-orientation="vertical" title="Ziehen: Spaltenbreite ändern, Doppelklick: zurücksetzen" style="left:calc(var(--cw) * 100%)" onpointerdown={dragCol} ondblclick={() => { S.layout.cw = 0.53; S.saveLayout() }}></div>
+    <div class="vs" role="separator" aria-orientation="horizontal" title="Ziehen: Zeilenhöhe ändern, Doppelklick: zurücksetzen" style="top:calc(var(--rh) * 100%);width:calc(var(--cw) * 100%)" onpointerdown={dragRow} ondblclick={() => { S.layout.rh = 0.54; S.saveLayout() }}></div>
+  {/if}
   {#if part === 'all' || part === 'fc'}
   <section class="win fc">
     <header>
@@ -384,10 +400,13 @@
 </div>
 
 <style>
-  .compose { display: grid; height: 100%; gap: 2px; grid-template-columns: minmax(520px, 1.15fr) minmax(460px, 1fr); grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-areas: 'fc par' 'prog par'; padding: 2px; }
+  .compose { display: grid; height: 100%; gap: 2px; position: relative; grid-template-columns: minmax(0, var(--cf)) minmax(0, var(--cg)); grid-template-rows: minmax(0, var(--rf)) minmax(0, var(--rg)); grid-template-areas: 'fc par' 'prog par'; padding: 2px; }
   .fc { grid-area: fc; } .prog { grid-area: prog; } .par { grid-area: par; }
   .selbar { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-bottom: 1px solid var(--line); font-size: 11px; }
   .fcz { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; } .fcz button { padding: 4px 0; font-size: 11px; background: var(--btn); border: 1px solid var(--line-hi); } .fcz button:hover { background: var(--btn-hi); }
+  .hs { position: absolute; top: 0; bottom: 0; width: 7px; margin-left: -4px; cursor: ew-resize; z-index: 20; }
+  .vs { position: absolute; left: 0; height: 7px; margin-top: -4px; cursor: ns-resize; z-index: 20; }
+  .hs:hover, .vs:hover { background: #5a7fc866; }
   .gd { position: absolute; bottom: 4px; width: 5px; height: 5px; border-radius: 50%; }
   .compose.solo { display: block; padding: 0; } .compose.solo > section { height: 100%; }
   .fkeys { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; padding: 3px; }

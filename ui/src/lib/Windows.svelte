@@ -11,6 +11,7 @@
   import Output from './Output.svelte'
   import CueValues from './CueValues.svelte'
   import Status from './Status.svelte'
+  import FixtureEditor from './FixtureEditor.svelte'
   import X from '@lucide/svelte/icons/x'
   import { SHAPES, TARGETS, WIN_VIEWS } from './types'
 
@@ -41,6 +42,7 @@
   const title = (w: Win) => {
     switch (w.kind) {
       case 'keypad': return 'Keypad'
+      case 'typedit': return 'New fixture type'
       case 'view': return WIN_VIEWS[w.arg].title
       case 'cue': return `Cue ${w.arg + 1} · ${show.lists[live.active]?.cues[w.arg]?.name ?? ''}`
       case 'list': return `Cuelist ${w.arg + 1} · ${show.lists[w.arg]?.name ?? ''}`
@@ -53,7 +55,7 @@
   const gone = (w: Win) =>
     (w.kind === 'cue' && !show.lists[live.active]?.cues[w.arg]) || (w.kind === 'list' && !show.lists[w.arg]) || (w.kind === 'fx' && !show.effects[w.arg]) ||
     (w.kind === 'group' && !show.groups[w.arg]) || (w.kind === 'preset' && !show.palettes[w.arg]) || (w.kind === 'fixture' && !show.fixtures.some((f) => f.id === w.arg))
-  $effect(() => { for (const w of [...S.wins]) if (w.kind !== 'keypad' && w.kind !== 'view' && gone(w)) S.closeWin(w.id) })
+  $effect(() => { for (const w of [...S.wins]) if (w.kind !== 'keypad' && w.kind !== 'view' && w.kind !== 'typedit' && gone(w)) S.closeWin(w.id) })
 </script>
 
 {#each S.wins as w (w.id)}
@@ -66,6 +68,8 @@
     <div class="fb" class:flush={w.kind === 'view'}>
       {#if w.kind === 'keypad'}
         <Keypad />
+      {:else if w.kind === 'typedit'}
+        <FixtureEditor />
       {:else if w.kind === 'view'}
         {@const v = WIN_VIEWS[w.arg].id}
         {#if v === 'fc' || v === 'prog' || v === 'par'}<Compose part={v} />

@@ -122,6 +122,7 @@
         <label class="f">Address<input type="number" min="1" max="512" bind:value={address} /></label>
       </div>
       <button class="btn on" onclick={add}><Plus size={14} /> Patch {count} fixture{count > 1 ? 's' : ''}</button>
+      <button class="btn" onclick={() => S.openWin('typedit')}><Wand size={14} /> Create fixture type…</button>
       <button class="btn" onclick={() => file.click()}><Upload size={14} /> Import GDTF / OFL…</button>
       <input bind:this={file} type="file" accept=".gdtf,.json" multiple hidden onchange={imp} />
       <div class="dim" style="margin-top:8px">DMX map</div>

@@ -16,6 +16,7 @@
   import Fader from './lib/Fader.svelte'
   import Sliders from '@lucide/svelte/icons/sliders-vertical'
   import ListVideo from '@lucide/svelte/icons/list-video'
+  import { startDrag } from './lib/split'
   import AppWindow from '@lucide/svelte/icons/app-window'
   import { WIN_VIEWS } from './lib/types'
   import Palette from '@lucide/svelte/icons/palette'
@@ -87,6 +88,11 @@
     S.dialog?.resolve(v)
     S.dialog = null
   }
+  // Trennlinie über der Bank: Höhe mindestens 90 px, höchstens 60 % des Fensters
+  function dragBank(e: PointerEvent) {
+    const h0 = S.layout.bankH
+    startDrag(e, (_, dy) => (S.layout.bankH = Math.round(Math.min(window.innerHeight * 0.6, Math.max(90, h0 - dy)))), () => S.saveLayout())
+  }
   const cycle = (d: number) => { const i = views.findIndex((v) => v[0] === S.view); S.view = views[(i + d + views.length) % views.length][0] }
   const cell = (i: number) => S.page * 10 + i
   const lists = $derived(show?.lists ?? [])
@@ -98,7 +104,7 @@
 {#if !live || !show}
   <div class="boot">Connecting to engine…{#if S.msg}<div class="dim">{S.msg}</div>{/if}</div>
 {:else}
-  <div class="app">
+  <div class="app" style="--bank:{S.layout.bankH}px">
     <div class="top">
       <button class="logo" onclick={openSettings}>LICHTPULT</button>
       <span class="dim show">{show.name}</span>
@@ -107,7 +113,7 @@
       <div class="msg" class:err={S.error}>{S.msg}</div>
       <span class="stat">{live.selection.length ? `${live.selection.length} fixture${live.selection.length > 1 ? 's' : ''} selected` : 'No fixture or zone selected'}</span>
       <span class="spacer"></span>
-      <button class="btn sm" class:on={S.wins.some((w) => w.kind === 'view')} onclick={(e) => S.menu(e, [...WIN_VIEWS.map((v, i) => ({ label: (S.wins.some((w) => w.id === 'view:' + i) ? '✓ ' : '\u2003') + v.title, run: () => S.toggleWin('view', i) })), { sep: true }, { label: 'Close all windows', disabled: !S.wins.length, run: () => (S.wins = []) }])} aria-label="Windows"><AppWindow size={14} /> Windows</button>
+      <button class="btn sm" class:on={S.wins.some((w) => w.kind === 'view')} onclick={(e) => S.menu(e, [...WIN_VIEWS.map((v, i) => ({ label: (S.wins.some((w) => w.id === 'view:' + i) ? '✓ ' : '\u2003') + v.title, run: () => S.toggleWin('view', i) })), { sep: true }, { label: 'Reset layout', run: () => S.resetLayout() }, { label: 'Close all windows', disabled: !S.wins.length, run: () => (S.wins = []) }])} aria-label="Windows"><AppWindow size={14} /> Windows</button>
       <button class="btn sm" class:on={S.wins.some((w) => w.kind === 'keypad')} onclick={() => S.toggleWin('keypad')} aria-label="Keypad"><KeyboardIcon size={14} /> Keypad</button>
       <button class="btn sm" disabled={!live.can_undo} onclick={() => S.act('Undo')} aria-label="Undo"><Undo size={14} /></button>
       <button class="btn sm" disabled={!live.can_redo} onclick={() => S.act('Redo')} aria-label="Redo"><Redo size={14} /></button>
@@ -140,6 +146,7 @@
     </div>
 
     <div class="bank">
+      <div class="vsplit" role="separator" aria-orientation="horizontal" title="Ziehen: Bank-Höhe ändern, Doppelklick: zurücksetzen" onpointerdown={dragBank} ondblclick={() => { S.layout.bankH = 190; S.saveLayout() }}></div>
       <div class="maingo">
         <div class="mg">
           <button class="gob" onclick={() => S.play('Back', act)}><SkipBack size={20} /><span>Back</span></button>
@@ -229,7 +236,7 @@
 
 <style>
   .boot { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--dim); }
-  .app { display: grid; grid-template-rows: 32px minmax(0, 1fr) 190px 28px; height: 100%; }
+  .app { display: grid; grid-template-rows: 32px minmax(0, 1fr) var(--bank, 190px) 28px; height: 100%; }
   .top { display: flex; align-items: center; gap: 10px; padding: 0 8px; background: #050505; border-bottom: 1px solid var(--line); }
   .logo { display: inline-flex; align-items: center; gap: 6px; font-weight: 900; letter-spacing: .2em; font-size: 12px; color: #fff; }
   .show { font-size: 11px; }
@@ -244,7 +251,7 @@
   .sbtn:hover { background: var(--btn-hi); }
   .sbtn.on { background: #2e2e2e; border-color: #fff; color: #fff; }
   .chev { height: 22px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line); color: #888; } .chev:hover { color: #fff; border-color: #888; }
-  .bank { display: grid; grid-template-columns: 230px 1fr; border-top: 1px solid var(--line); background: #050505; min-height: 0; }
+  .bank { position: relative; display: grid; grid-template-columns: 230px 1fr; border-top: 1px solid var(--line); background: #050505; min-height: 0; }
   .maingo { display: flex; flex-direction: column; gap: 3px; padding: 3px; border-right: 1px solid var(--line); }
   .mg { display: grid; grid-template-columns: 1fr 1.4fr; gap: 3px; flex: 1; }
   .mg:last-of-type { grid-template-columns: 1fr 1fr; }
@@ -253,6 +260,8 @@
   .gob.go { background: var(--btn-green); border-color: #50d068; font-size: 13px; }
   .pager { display: flex; align-items: center; justify-content: space-between; font-size: 11px; }
   .cells { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; padding: 3px; min-width: 0; }
+  .vsplit { position: absolute; left: 0; right: 0; top: -3px; height: 7px; cursor: ns-resize; z-index: 20; }
+  .vsplit:hover { background: #5a7fc866; }
   .bcell { display: grid; grid-template-rows: 34px 1fr 26px 16px; gap: 3px; background: #0d0d0d; border: 1px solid #2a2a2a; padding: 3px; min-width: 0; min-height: 0; }
   .bcell.act { border-color: #fff; }
   .bcell.empty { background: transparent; border-color: #1a1a1a; display: block; position: relative; color: #333; }
