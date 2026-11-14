@@ -1,4 +1,4 @@
-use eframe::egui::{self, Color32, CornerRadius, RichText, Stroke};
+use eframe::egui::{self, Color32, CornerRadius, Rect, RichText, Stroke};
 
 pub const BG: Color32 = Color32::from_rgb(22, 22, 22);
 pub const PANEL: Color32 = Color32::from_rgb(33, 33, 33);
@@ -54,6 +54,7 @@ pub fn apply(ctx: &egui::Context, accent: Color32) {
         s.spacing.button_padding = egui::vec2(12.0, 5.0);
         s.spacing.interact_size.y = 30.0;
         s.spacing.slider_width = 320.0;
+        s.interaction.tooltip_delay = 0.15;
         s.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(14.0));
         s.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
         s.text_styles.insert(egui::TextStyle::Small, egui::FontId::proportional(12.0));
@@ -170,6 +171,23 @@ fn icon_source(name: &str) -> egui::ImageSource<'static> {
         "trash" => include_bytes!("../assets/icons/trash.svg"),
         "reset" => include_bytes!("../assets/icons/rotate-ccw.svg"),
         "list" => include_bytes!("../assets/icons/list.svg"),
+        "terminal" => include_bytes!("../assets/icons/terminal.svg"),
+        "copy" => include_bytes!("../assets/icons/copy.svg"),
+        "up" => include_bytes!("../assets/icons/arrow-up.svg"),
+        "down" => include_bytes!("../assets/icons/arrow-down.svg"),
+        "search" => include_bytes!("../assets/icons/search.svg"),
+        "grip" => include_bytes!("../assets/icons/grip-vertical.svg"),
+        "zoom-in" => include_bytes!("../assets/icons/zoom-in.svg"),
+        "zoom-out" => include_bytes!("../assets/icons/zoom-out.svg"),
+        "fit" => include_bytes!("../assets/icons/maximize.svg"),
+        "pointer" => include_bytes!("../assets/icons/mouse-pointer-2.svg"),
+        "hand" => include_bytes!("../assets/icons/hand.svg"),
+        "dots" => include_bytes!("../assets/icons/grid-3x3.svg"),
+        "snap" => include_bytes!("../assets/icons/magnet.svg"),
+        "next" => include_bytes!("../assets/icons/skip-forward.svg"),
+        "dist-h" => include_bytes!("../assets/icons/align-horizontal-distribute-center.svg"),
+        "dist-v" => include_bytes!("../assets/icons/align-vertical-distribute-center.svg"),
+        "rotate" => include_bytes!("../assets/icons/rotate-cw.svg"),
         "grid" => include_bytes!("../assets/icons/layout-grid.svg"),
         _ => include_bytes!("../assets/icons/layers.svg"),
     };
@@ -190,40 +208,63 @@ pub fn icon_text(name: &str, text: &str, color: Color32) -> egui::Button<'static
     egui::Button::image_and_text(icon(name, color, 16.0), egui::RichText::new(text.to_string()).color(color))
 }
 
-/// Horizontaler Regler: Name, Schieber mit Prozentfeld, Freigeben-Knopf.
+/// Breiter waagerechter Regler: Name links, Wert rechts, Füllung in der Attributfarbe.
 /// `set` = Wert kommt aus dem Programmer (hell), sonst aus der Wiedergabe (gedimmt).
+/// Doppelklick oder Rechtsklick gibt den Programmer-Wert frei.
 pub fn fader(ui: &mut egui::Ui, label: &str, value: u8, tint: Color32, set: bool) -> Fader {
     let mut out = Fader::None;
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 8.0;
-        ui.add_sized([74.0, 28.0], egui::Label::new(RichText::new(label).color(if set { TEXT } else { MUTED })).truncate());
-        let mut pct = value as f32 / 2.55;
-        ui.scope(|ui| {
-            ui.visuals_mut().selection.bg_fill = if set { tint } else { tint.gamma_multiply(0.35) };
-            ui.spacing_mut().slider_width = (ui.available_width() - 56.0 - 36.0 - 16.0).max(80.0);
-            let slider = egui::Slider::new(&mut pct, 0.0..=100.0).fixed_decimals(0).suffix("%").trailing_fill(true);
-            if ui.add(slider).changed() {
-                out = Fader::Set((pct * 2.55).round().clamp(0.0, 255.0) as u8);
-            }
-        });
-        if set {
-            if icon_btn(ui, "reset", "Freigeben (Wert aus Szene verwenden)").clicked() {
-                out = Fader::Reset;
-            }
-        } else {
-            ui.add_space(32.0);
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(ui.available_width().max(240.0), 32.0), egui::Sense::click_and_drag());
+    let track = Rect::from_min_max(egui::pos2(rect.left() + 84.0, rect.center().y - 5.0), egui::pos2(rect.right() - 52.0, rect.center().y + 5.0));
+    let k = value as f32 / 255.0;
+    let x = track.left() + track.width() * k;
+    let p = ui.painter();
+    p.text(egui::pos2(rect.left(), rect.center().y), egui::Align2::LEFT_CENTER, label, egui::FontId::proportional(14.0), if set { TEXT } else { MUTED });
+    p.rect_filled(track, 5.0, Color32::from_rgb(14, 14, 14));
+    let mut fill = track;
+    fill.set_right(x.max(track.left() + 1.0));
+    p.rect_filled(fill, 5.0, if set { tint } else { tint.gamma_multiply(0.35) });
+    let hot = r.hovered() || r.dragged();
+    p.circle(egui::pos2(x, rect.center().y), if hot { 9.0 } else { 8.0 }, if set { Color32::WHITE } else { Color32::from_rgb(150, 150, 150) }, Stroke::new(1.0, LINE));
+    p.text(
+        egui::pos2(rect.right(), rect.center().y),
+        egui::Align2::RIGHT_CENTER,
+        format!("{}%", (value as u32 * 100 + 127) / 255),
+        egui::FontId::monospace(13.0),
+        if set { TEXT } else { MUTED },
+    );
+    if r.double_clicked() || r.secondary_clicked() {
+        out = Fader::Reset;
+    } else if r.is_pointer_button_down_on() {
+        if let Some(pos) = r.interact_pointer_pos() {
+            out = Fader::Set((((pos.x - track.left()) / track.width()).clamp(0.0, 1.0) * 255.0).round() as u8);
         }
-    });
+    }
+    r.on_hover_text("Ziehen = einstellen · Doppelklick oder Rechtsklick = freigeben");
     out
 }
 
 /// Info-Symbol: erklärt beim Darüberfahren, wofür der Bereich da ist.
 pub fn info(ui: &mut egui::Ui, title: &str, text: &str) {
-    let r = ui.add(egui::Image::new(icon_source("info")).tint(MUTED).fit_to_exact_size(egui::vec2(15.0, 15.0)).sense(egui::Sense::hover()));
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::click());
+    icon("info", if r.hovered() { TEXT } else { MUTED }, 15.0).paint_at(ui, Rect::from_center_size(rect.center(), egui::vec2(15.0, 15.0)));
     r.on_hover_ui(|ui| {
-        ui.set_max_width(300.0);
+        ui.set_max_width(320.0);
         ui.label(RichText::new(title).strong());
         ui.add_space(2.0);
         ui.label(RichText::new(text).color(MUTED));
     });
+}
+
+/// Runder Knopf mit Icon (Player-Leiste).
+pub fn round_btn(ui: &mut egui::Ui, name: &str, diameter: f32, fill: Color32, icon_color: Color32, tip: &str) -> egui::Response {
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(diameter, diameter), egui::Sense::click());
+    let fill = if r.hovered() { fill.gamma_multiply(1.15) } else { fill };
+    ui.painter().circle_filled(rect.center(), diameter / 2.0, fill);
+    icon(name, icon_color, diameter * 0.42).paint_at(ui, Rect::from_center_size(rect.center(), egui::vec2(diameter * 0.42, diameter * 0.42)));
+    r.on_hover_text(tip)
+}
+
+/// Normaler Knopf mit Mindestgröße, damit nichts gequetscht wirkt.
+pub fn button(ui: &mut egui::Ui, text: &str) -> egui::Response {
+    ui.add(egui::Button::new(text).min_size(egui::vec2(64.0, 30.0)))
 }

@@ -154,7 +154,7 @@ impl App {
                                 if ui.button("Warte…").clicked() {
                                     m.learn = None;
                                 }
-                            } else if ui.small_button("Lernen").clicked() {
+                            } else if theme::button(ui, "Lernen").clicked() {
                                 m.learn = Some(t);
                             }
                             if let Some(i) = bound {

@@ -1,6 +1,6 @@
 //! Szenen: Cuelisten als Raster aus abrufbaren Szenen-Pads.
 
-use crate::theme::{self, card, hint, pill, tile};
+use crate::theme::{self, card, hint, tile};
 use crate::{App, play, short};
 use eframe::egui::{self, Color32, RichText};
 use lichtpult::engine::{Action, Cue, Engine};
@@ -30,7 +30,6 @@ impl App {
         let accent = self.accent();
         let active = e.active;
         let list = e.list();
-        let cur = e.cue();
         self.scene_sel = self.scene_sel.min(list.cues.len().saturating_sub(1));
 
         ui.horizontal(|ui| {
@@ -67,33 +66,6 @@ impl App {
 
         card(ui, "", |ui| {
             ui.horizontal(|ui| {
-                let big = egui::vec2(48.0, 40.0);
-                if ui.add(egui::Button::image(theme::icon("back", theme::TEXT, 18.0)).min_size(big)).on_hover_text("Zurück (Backspace)").clicked() {
-                    play(acts, e, Action::Back(active));
-                }
-                let go = theme::icon_text("play", "GO", Color32::BLACK).fill(accent).min_size(egui::vec2(104.0, 40.0));
-                if ui.add(go).on_hover_text("Nächste Szene (Leertaste)").clicked() {
-                    play(acts, e, Action::Go(active));
-                }
-                if ui.add(egui::Button::image(theme::icon("stop", theme::TEXT, 18.0)).min_size(big)).on_hover_text("Liste ausschalten").clicked() {
-                    acts.push(Action::ReleaseList(active));
-                }
-                ui.add_space(12.0);
-                ui.vertical(|ui| {
-                    let now = cur.and_then(|c| list.cues.get(c)).map_or("—".to_string(), |c| c.name.clone());
-                    let next = list.cues.get(cur.map_or(0, |c| c + 1)).map_or("—".to_string(), |c| c.name.clone());
-                    ui.label(RichText::new(format!("Aktuell: {}", short(&now, 18))).strong());
-                    ui.label(RichText::new(format!("Danach: {}", short(&next, 18))).color(theme::MUTED));
-                });
-                ui.add_space(12.0);
-                let mut lvl = e.players.get(active).map_or(255, |p| p.level) as f32 / 2.55;
-                ui.label(RichText::new("Helligkeit").color(theme::MUTED));
-                ui.scope(|ui| {
-                    ui.spacing_mut().slider_width = (ui.available_width() - 520.0).clamp(60.0, 220.0);
-                    if ui.add(egui::Slider::new(&mut lvl, 0.0..=100.0).fixed_decimals(0).suffix("%")).changed() {
-                        acts.push(Action::SetLevel(active, (lvl * 2.55).round() as u8));
-                    }
-                });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if e.show.lists.len() > 1 && theme::icon_btn(ui, "trash", "Liste löschen").clicked() {
                         acts.push(Action::DeleteList(active));
@@ -108,14 +80,6 @@ impl App {
                     }
                 });
             });
-            if !e.programmer.is_empty() {
-                ui.horizontal(|ui| {
-                    pill(ui, "Programmer aktiv – überdeckt Szenen", theme::DANGER);
-                    if ui.small_button("Programmer leeren").clicked() {
-                        acts.push(Action::ClearProgrammer);
-                    }
-                });
-            }
         });
 
         if list.cues.is_empty() {

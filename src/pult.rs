@@ -81,10 +81,10 @@ impl App {
         ui.horizontal(|ui| {
             section(ui, "Fixtures", "Wähle die Lampen aus, die du einstellen willst. Strg/Shift + Klick wählt mehrere.");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.small_button("Keine").clicked() {
+                if theme::button(ui, "Keine").clicked() {
                     acts.push(Action::ClearSelection);
                 }
-                if ui.small_button("Alle").clicked() {
+                if theme::button(ui, "Alle").clicked() {
                     acts.push(Action::SelectAll);
                 }
             });

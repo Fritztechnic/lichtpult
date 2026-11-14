@@ -39,6 +39,7 @@ pub struct App {
     out: Arc<Mutex<lichtpult::OutConfig>>,
     midi: Arc<Mutex<lichtpult::midi::Midi>>,
     pal_kind: Kind,
+    cmd_open: bool,
     scene_sel: usize,
     scene_grid: bool,
     prop_sel: Option<usize>,
@@ -98,6 +99,7 @@ impl App {
             out,
             midi,
             pal_kind: Kind::Color,
+            cmd_open: false,
             scene_sel: 0,
             scene_grid: false,
             prop_sel: None,
@@ -206,6 +208,12 @@ impl App {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(6.0);
                 self.settings(ui, e);
+                if theme::icon_btn(ui, "terminal", "Befehlszeile (Strg+L)").clicked() {
+                    self.cmd_open = !self.cmd_open;
+                }
+                if !narrow {
+                    self.output_status(ui);
+                }
                 let mut black = e.blackout;
                 let b = egui::Button::new(RichText::new("Blackout").strong().color(if black { Color32::BLACK } else { theme::TEXT }))
                     .fill(if black { theme::DANGER } else { theme::RAISED })
@@ -265,89 +273,120 @@ impl App {
         });
     }
 
-    /// Schmale Wiedergabeleiste: aktive Cueliste mit GO/Zurück/Aus.
-    fn transport(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
+    /// Player-Leiste: Szene links, Transport in der Mitte, Helligkeit rechts.
+    fn player(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
         let accent = self.accent();
-        ui.horizontal_centered(|ui| {
-            ui.add_space(6.0);
-            let i = e.active;
-            let list = e.list();
-            let cur = e.cue().and_then(|c| list.cues.get(c)).map_or("—".to_string(), |c| c.name.clone());
-            let next = list.cues.get(e.cue().map_or(0, |c| c + 1)).map_or("—".to_string(), |c| c.name.clone());
-            if theme::icon_btn(ui, "back", "Zurück (Backspace)").clicked() {
+        let i = e.active;
+        let list = e.list();
+        let cur = e.cue();
+        let now = cur.and_then(|c| list.cues.get(c)).map_or("Keine Szene aktiv".to_string(), |c| c.name.clone());
+        let next = list.cues.get(cur.map_or(0, |c| c + 1)).map(|c| c.name.clone());
+        let full = ui.max_rect();
+        let prog = if cur.is_some() { e.fade_progress(i) } else { 0.0 };
+        ui.painter().rect_filled(egui::Rect::from_min_size(full.min, egui::vec2(full.width(), 3.0)), 0.0, theme::LINE);
+        ui.painter().rect_filled(egui::Rect::from_min_size(full.min, egui::vec2(full.width() * prog, 3.0)), 0.0, accent);
+        let h = full.height();
+        let left = egui::Rect::from_min_size(full.min + egui::vec2(8.0, 6.0), egui::vec2(full.width() * 0.3, h - 6.0));
+        ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| {
+            ui.vertical(|ui| {
+                ui.add_space(8.0);
+                ui.label(RichText::new(short(&list.name, 24)).size(11.5).color(theme::MUTED));
+                ui.label(RichText::new(short(&now, 28)).size(16.0).strong());
+                if let Some(n) = next {
+                    ui.label(RichText::new(format!("Danach: {}", short(&n, 24))).size(12.0).color(theme::MUTED));
+                }
+            });
+        });
+        let mid = egui::Rect::from_center_size(full.center() + egui::vec2(0.0, 2.0), egui::vec2(200.0, h));
+        ui.scope_builder(egui::UiBuilder::new().max_rect(mid).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
+            ui.spacing_mut().item_spacing.x = 14.0;
+            if theme::round_btn(ui, "back", 40.0, theme::RAISED, theme::TEXT, "Zurück (Backspace)").clicked() {
                 play(acts, e, Action::Back(i));
             }
-            let go = theme::icon_text("play", "GO", Color32::BLACK).fill(accent).min_size(egui::vec2(80.0, 32.0));
-            if ui.add(go).on_hover_text("Nächste Szene (Leertaste)").clicked() {
+            if theme::round_btn(ui, "play", 56.0, accent, Color32::BLACK, "GO – nächste Szene (Leertaste)").clicked() {
                 play(acts, e, Action::Go(i));
             }
-            if theme::icon_btn(ui, "stop", "Liste ausschalten").clicked() {
+            if theme::round_btn(ui, "stop", 40.0, theme::RAISED, theme::TEXT, "Liste ausschalten").clicked() {
                 acts.push(Action::ReleaseList(i));
             }
-            ui.add_space(10.0);
-            ui.label(RichText::new(short(&list.name, 20)).strong());
-            ui.label(RichText::new(format!("läuft: {}", short(&cur, 22))).color(theme::TEXT));
-            ui.label(RichText::new(format!("danach: {}", short(&next, 22))).color(theme::MUTED));
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_space(6.0);
-                if !e.programmer.is_empty() {
-                    if ui.button("Programmer leeren").on_hover_text("Manuelle Werte überdecken die Szenen – leeren, um die Szenen zu sehen").clicked() {
-                        acts.push(Action::ClearProgrammer);
+        });
+        let right = egui::Rect::from_min_max(egui::pos2(full.right() - full.width() * 0.3, full.top()), full.max - egui::vec2(8.0, 0.0));
+        ui.scope_builder(egui::UiBuilder::new().max_rect(right).layout(egui::Layout::right_to_left(egui::Align::Center)), |ui| {
+            let mut lvl = e.players.get(i).map_or(255, |p| p.level) as f32 / 2.55;
+            ui.spacing_mut().slider_width = 110.0;
+            if ui.add(egui::Slider::new(&mut lvl, 0.0..=100.0).fixed_decimals(0).suffix("%")).changed() {
+                acts.push(Action::SetLevel(i, (lvl * 2.55).round() as u8));
+            }
+            ui.label(RichText::new("Liste").size(12.0).color(theme::MUTED));
+            if !e.programmer.is_empty() {
+                if theme::button(ui, "Leeren").on_hover_text("Manuelle Werte überdecken die Szenen – leeren, um die Szenen zu sehen").clicked() {
+                    acts.push(Action::ClearProgrammer);
+                }
+                pill(ui, "Programmer aktiv", theme::DANGER);
+            }
+        });
+    }
+
+    /// Befehlszeile als Overlay (Strg+L).
+    fn command_overlay(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
+        if !self.cmd_open {
+            return;
+        }
+        let accent = self.accent();
+        egui::Area::new(egui::Id::new("cmd_overlay")).anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -100.0)).order(egui::Order::Foreground).show(ui.ctx(), |ui| {
+            egui::Frame::popup(ui.style()).fill(theme::PANEL).inner_margin(12).show(ui, |ui| {
+                ui.set_width(600.0);
+                ui.horizontal(|ui| {
+                    let ir = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover()).0;
+                    theme::icon("terminal", accent, 16.0).paint_at(ui, ir);
+                    let r = ui.add(
+                        egui::TextEdit::singleline(&mut self.cmd)
+                            .id(egui::Id::new("cmdline"))
+                            .desired_width(f32::INFINITY)
+                            .hint_text("Befehl: 1 thru 8 @ 50 · red 255 · go · fx 1 · record scene"),
+                    );
+                    r.request_focus();
+                    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                        self.cmd_open = false;
                     }
-                    pill(ui, "Programmer aktiv – überdeckt Szenen", theme::DANGER);
+                    if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !self.cmd.trim().is_empty() {
+                        match lichtpult::cmd::parse(&self.cmd, e) {
+                            Ok(a) => {
+                                acts.extend(a);
+                                self.cmd.clear();
+                                self.cmd_error = false;
+                                self.status = "OK".into();
+                                self.cmd_open = false;
+                            }
+                            Err(err) => {
+                                self.cmd_error = true;
+                                self.status = err;
+                            }
+                        }
+                    }
+                });
+                if self.cmd_error {
+                    ui.label(RichText::new(&self.status).size(12.5).color(theme::DANGER));
+                } else {
+                    ui.label(RichText::new("Enter = ausführen · Esc = schließen").size(12.0).color(theme::MUTED));
                 }
             });
         });
     }
 
-    fn command_bar(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
-        let accent = self.accent();
-        ui.horizontal_centered(|ui| {
-            ui.add_space(6.0);
-            ui.label(RichText::new("›").color(accent).strong());
-            let w = (ui.available_width() - 330.0).max(120.0);
-            let r = ui.add_sized(
-                [w, 24.0],
-                egui::TextEdit::singleline(&mut self.cmd)
-                    .id(egui::Id::new("cmdline"))
-                    .hint_text("Befehl: 1 thru 8 @ 50 · red 255 · go · fx 1 · record scene   (Strg+L)"),
-            );
-            if r.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                r.surrender_focus();
-            }
-            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !self.cmd.trim().is_empty() {
-                match lichtpult::cmd::parse(&self.cmd, e) {
-                    Ok(a) => {
-                        acts.extend(a);
-                        self.cmd.clear();
-                        self.cmd_error = false;
-                        self.status = "OK".into();
-                    }
-                    Err(err) => {
-                        self.cmd_error = true;
-                        self.status = err;
-                    }
-                }
-                r.request_focus();
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_space(6.0);
-                let c = self.out.lock().unwrap().clone();
-                if c.enabled {
-                    let proto = match c.protocol {
-                        lichtpult::Protocol::ArtNet => "Art-Net",
-                        lichtpult::Protocol::Sacn => "sACN",
-                        lichtpult::Protocol::Both => "Art-Net + sACN",
-                    };
-                    let to = if c.target.trim().is_empty() { "Broadcast" } else { c.target.trim() };
-                    pill(ui, &format!("{proto} → {to}"), theme::OK);
-                } else {
-                    pill(ui, "Ausgabe aus", theme::DANGER);
-                }
-                let color = if self.cmd_error { theme::DANGER } else { theme::MUTED };
-                ui.label(RichText::new(short(&self.status, 40)).small().color(color));
-            });
-        });
+    fn output_status(&self, ui: &mut egui::Ui) {
+        let c = self.out.lock().unwrap().clone();
+        if c.enabled {
+            let proto = match c.protocol {
+                lichtpult::Protocol::ArtNet => "Art-Net",
+                lichtpult::Protocol::Sacn => "sACN",
+                lichtpult::Protocol::Both => "Art-Net + sACN",
+            };
+            let to = if c.target.trim().is_empty() { "Broadcast" } else { c.target.trim() };
+            pill(ui, &format!("{proto} → {to}"), theme::OK);
+        } else {
+            pill(ui, "Ausgabe aus", theme::DANGER);
+        }
     }
 }
 
@@ -403,17 +442,15 @@ impl eframe::App for App {
             });
         }
         if ui.input(|i| i.key_pressed(egui::Key::L) && i.modifiers.command) {
-            ui.memory_mut(|m| m.request_focus(egui::Id::new("cmdline")));
+            self.cmd_open = !self.cmd_open;
         }
 
         let narrow = ui.available_width() < 1150.0;
         let side_w = if narrow { 250.0 } else { 330.0 };
         let bar = egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(8, 0));
         egui::Panel::top("top").exact_size(46.0).frame(bar).show(ui, |ui| self.top_bar(ui, &e, &mut acts, narrow));
-        egui::Panel::bottom("footer").exact_size(34.0).frame(bar).show(ui, |ui| self.command_bar(ui, &e, &mut acts));
-        if self.view != View::Scenes {
-            egui::Panel::bottom("transport").exact_size(46.0).frame(bar).show(ui, |ui| self.transport(ui, &e, &mut acts));
-        }
+        let player = egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(8, 0));
+        egui::Panel::bottom("player").exact_size(84.0).frame(player).show(ui, |ui| self.player(ui, &e, &mut acts));
         if self.view == View::Pult {
             let side = egui::Frame::new().fill(theme::PANEL).inner_margin(12);
             egui::Panel::left("select").default_size(side_w).size_range(220.0..=480.0).frame(side).show(ui, |ui| {
@@ -443,6 +480,7 @@ impl eframe::App for App {
             View::Output => self.output(ui, &e),
         });
 
+        self.command_overlay(ui, &e, &mut acts);
         for a in acts {
             e.apply(a);
         }

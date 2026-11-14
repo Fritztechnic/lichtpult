@@ -561,6 +561,11 @@ impl Engine {
         }
     }
 
+    /// Fortschritt der laufenden Überblendung (0..1) einer Cueliste.
+    pub fn fade_progress(&self, l: usize) -> f32 {
+        self.players.get(l).map_or(1.0, |p| if p.fade_time <= 0.0 { 1.0 } else { (p.fade_t / p.fade_time).min(1.0) })
+    }
+
     /// Tatsächlich ausgegebener DMX-Wert (inkl. Master/Blackout).
     pub fn output_of(&self, f: &Fixture, a: Attr) -> u8 {
         let Some(i) = self.show.channels(f).iter().position(|c| *c == Some(a)) else { return 0 };
