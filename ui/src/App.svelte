@@ -3,6 +3,7 @@
   import { S } from './store.svelte'
   import { call } from './api'
   import Compose from './lib/Compose.svelte'
+  import Presets from './lib/Presets.svelte'
   import Playback from './lib/Playback.svelte'
   import Plan from './lib/Plan.svelte'
   import Patch from './lib/Patch.svelte'
@@ -13,6 +14,7 @@
   import Fader from './lib/Fader.svelte'
   import Sliders from '@lucide/svelte/icons/sliders-vertical'
   import ListVideo from '@lucide/svelte/icons/list-video'
+  import Palette from '@lucide/svelte/icons/palette'
   import Map from '@lucide/svelte/icons/map'
   import Cable from '@lucide/svelte/icons/cable'
   import Monitor from '@lucide/svelte/icons/monitor'
@@ -37,6 +39,7 @@
 
   const views = [
     ['compose', 'Compose', Sliders],
+    ['presets', 'Presets', Palette],
     ['playback', 'Playback', ListVideo],
     ['plan', 'Stage', Map],
     ['patch', 'Patch', Cable],
@@ -123,6 +126,7 @@
       </nav>
       <div class="view">
         {#if S.view === 'compose'}<Compose />
+        {:else if S.view === 'presets'}<Presets />
         {:else if S.view === 'playback'}<Playback />
         {:else if S.view === 'plan'}<Plan />
         {:else if S.view === 'patch'}<Patch />

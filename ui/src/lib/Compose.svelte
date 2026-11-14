@@ -4,6 +4,8 @@
   import Tool from './Tool.svelte'
   import Info from './Info.svelte'
   import { ATTR_COLOR, ATTR_LABEL, KIND_OF, SHAPES, TARGETS, type Kind } from './types'
+  import Layers from '@lucide/svelte/icons/layers'
+  import type { MenuItem } from '../store.svelte'
   import Lightbulb from '@lucide/svelte/icons/lightbulb'
   import Save from '@lucide/svelte/icons/save'
   import RefreshCw from '@lucide/svelte/icons/refresh-cw'
@@ -31,8 +33,7 @@
   const liveFx = $derived(new Map(live.fixtures.map((f) => [f.id, f])))
 
   let fcTab = $state<'groups' | 'fixtures' | 'selected'>('fixtures')
-  let mode = $state<'apply' | 'record' | 'update' | 'rename' | 'delete'>('apply')
-  let pTab = $state<Kind>('Intensity')
+  let mode = $state<'apply' | 'update' | 'rename' | 'delete'>('apply')
   let parTab = $state<'Intensity' | 'Position' | 'Color' | 'Beam' | 'FX'>('Intensity')
   let focusAttr = $state('Dimmer')
   let fxSel = $state(0)
@@ -42,9 +43,39 @@
   const fill = (n: number, c: number) => Math.max(c * 6, Math.ceil(n / c) * c) - n
   const pct = (v: number) => Math.round((v / 255) * 100) + '%'
 
-  async function clickFixture(id: number, e: MouseEvent) {
+  // plain press selects only this fixture, dragging over more pads adds them; Ctrl toggles, Shift selects a range
+  let dragging = false
+  function padDown(id: number, e: PointerEvent) {
+    if (e.button !== 0) return
     if (e.shiftKey && live.last_selected != null) S.act({ SelectRange: [live.last_selected, id] })
-    else S.act({ Toggle: id })
+    else if (e.ctrlKey || e.metaKey) S.act({ Toggle: id })
+    else { S.act({ Select: id }); dragging = true }
+  }
+  function padEnter(id: number, e: PointerEvent) {
+    if (dragging && e.buttons & 1 && !sel.has(id)) S.act({ Toggle: id })
+  }
+  const idsOf = (ids: number[]) => ids.filter((id) => show.fixtures.some((f) => f.id === id))
+  function groupPick(i: number, e: MouseEvent) {
+    const ids = idsOf(show.groups[i].ids)
+    if (e.ctrlKey || e.metaKey) S.act(ids.filter((id) => !sel.has(id)).map((id) => ({ Toggle: id })))
+    else if (e.shiftKey) S.act(ids.filter((id) => sel.has(id)).map((id) => ({ Toggle: id })))
+    else S.act({ SelectGroup: i })
+  }
+  const groupActive = (i: number) => { const g = idsOf(show.groups[i].ids); return g.length > 0 && g.length === live.selection.length && g.every((id) => sel.has(id)) }
+  const groupsOf = (id: number) => show.groups.map((g, i) => ({ g, i })).filter((x) => x.g.ids.includes(id))
+
+  let typeFilter = $state(-1)
+  function sameType() {
+    const ref = show.fixtures.find((f) => f.id === (live.last_selected ?? live.selection[0]))
+    if (!ref) return
+    const ids = show.fixtures.filter((f) => f.ty === ref.ty).map((f) => f.id)
+    S.act([{ Select: ids[0] }, ...ids.slice(1).map((id) => ({ Toggle: id }))])
+  }
+  function addToGroup(i: number) {
+    const keep = [...live.selection]
+    const old = show.groups[i].ids
+    if (!keep.length) return
+    S.act([{ SelectGroup: i }, ...keep.filter((id) => !old.includes(id)).map((id) => ({ Toggle: id })), { UpdateGroup: i }, { Select: keep[0] }, ...keep.slice(1).map((id) => ({ Toggle: id }))])
   }
 
   async function groupClick(i: number) {
@@ -60,20 +91,15 @@
     const n = await S.ask('Rename group', show.groups[i].name)
     if (n) S.act({ RenameGroup: [i, n] })
   }
-  async function presetClick(i: number) {
-    if (mode === 'apply' || mode === 'record') S.act({ ApplyPalette: i })
-    else if (mode === 'update') S.act({ UpdatePalette: i })
-    else if (mode === 'delete') S.act({ DeletePalette: i })
-    else if (mode === 'rename') {
-      const n = await S.ask('Rename preset', show.palettes[i].name)
-      if (n) S.act({ RenamePalette: [i, n] })
-    }
-  }
   function setMode(m: typeof mode) {
     mode = mode === m ? 'apply' : m
   }
-  const recGroup = () => S.act('RecordGroup')
-  const recPreset = () => S.act({ RecordPalette: pTab })
+  async function recGroup() {
+    if (!live.selection.length) return
+    const n = await S.ask('Name of the new group', `Group ${show.groups.length + 1}`)
+    if (n === null) return
+    S.act(['RecordGroup', { RenameGroup: [show.groups.length, n || `Group ${show.groups.length + 1}`] }])
+  }
 
   async function every() {
     const n = await S.ask('Select every n-th fixture of the selection', '2')
@@ -81,10 +107,8 @@
   }
 
   const fcIds = $derived(
-    fcTab === 'selected' ? show.fixtures.filter((f) => sel.has(f.id)) : show.fixtures,
+    (fcTab === 'selected' ? show.fixtures.filter((f) => sel.has(f.id)) : show.fixtures).filter((f) => typeFilter < 0 || f.ty === typeFilter),
   )
-  const presets = $derived(show.palettes.map((p, i) => ({ p, i })).filter((x) => x.p.kind === pTab))
-  const kindOfTab = { I: 'Intensity', P: 'Position', C: 'Color', B: 'Beam' } as const
 
   // attributes available for the selected fixtures
   const attrs = $derived.by(() => {
@@ -170,7 +194,7 @@
   const fxName = (id: number) => show.fixtures.find((f) => f.id === id)?.name ?? '#' + id
 </script>
 
-<svelte:window onkeydown={fkey} />
+<svelte:window onkeydown={fkey} onpointerup={() => (dragging = false)} />
 <div class="compose">
   <section class="win fc">
     <header>
@@ -179,21 +203,23 @@
       <Tool icon={ArrowLeftRight} label="Invert" acc="var(--blue)" onclick={() => S.act('InvertSelection')} />
       <Tool icon={Lightbulb} label="Highlight" acc="var(--yellow)" on={live.highlight} onclick={() => S.act({ Highlight: !live.highlight })} />
       <Tool icon={ListFilter} label="Every" acc="var(--yellow)" onclick={every} />
+      <Tool icon={Layers} label="Same type" acc="var(--purple)" disabled={!live.selection.length} onclick={sameType} title="Select all fixtures of the same type as the last selected" />
       <Tool icon={ChevronLeft} label="Last" acc="var(--blue)" onclick={() => S.act({ SelectStep: -1 })} />
       <Tool icon={ChevronRight} label="Next" acc="var(--green)" onclick={() => S.act({ SelectStep: 1 })} />
-      <div class="title">Fixture Center <Info text="Click a fixture to toggle it in the selection, Shift+click selects a range. Groups store a selection. The red pad is the last selected fixture." /></div>
+      <div class="title">Fixture Center <Info text="Click a fixture to select it, drag across pads to add more, Ctrl+click toggles, Shift+click selects a range. Groups store a selection: click selects, Ctrl+click adds, Shift+click removes its fixtures. The red pad is the last selected fixture." /></div>
       {#if fcTab === 'groups'}
-        <Tool icon={Save} label="Record" acc="var(--red-hi)" onclick={recGroup} />
+        <Tool icon={Save} label="Record" acc="var(--red-hi)" disabled={!live.selection.length} onclick={recGroup} title="Record the selection as a new group" />
         <Tool icon={RefreshCw} label="Update" acc="var(--yellow)" on={mode === 'update'} onclick={() => setMode('update')} />
         <Tool icon={Pencil} label="Rename" acc="var(--blue)" on={mode === 'rename'} onclick={() => setMode('rename')} />
         <Tool icon={Trash2} label="Delete" acc="var(--red-hi)" on={mode === 'delete'} onclick={() => setMode('delete')} />
       {/if}
     </header>
+    <div class="selbar"><span class="chip" style="background:var(--green)">{live.selection.length} selected</span><span class="dim">of {show.fixtures.length}</span><span class="spacer"></span>{#if show.types.length > 1 && fcTab !== 'groups'}<select bind:value={typeFilter}><option value={-1}>All types</option>{#each show.types as t, ti}<option value={ti}>{t.name}</option>{/each}</select>{/if}</div>
     <div class="body">
       {#if fcTab === 'groups'}
         <div class="padgrid" style="--cols:6">
           {#each show.groups as g, i}
-            <button class="pad" onclick={() => groupClick(i)} oncontextmenu={(e) => S.menu(e, [{ label: 'Select', run: () => S.act({ SelectGroup: i }) }, { label: 'Edit…', run: () => S.openWin('group', i) }, { label: 'Update from selection', run: () => S.act({ UpdateGroup: i }) }, { label: 'Rename…', run: () => groupRename(i) }, { sep: true }, { label: 'Delete', danger: true, run: () => S.act({ DeleteGroup: i }) }])}><span class="sw" style="background:{GC[i % GC.length]}"></span><span class="n">{i + 1}</span><span class="nm">{g.name}</span><span class="v">{g.ids.length}</span></button>
+            <button class="pad" class:sel={groupActive(i)} onclick={(e) => (mode === 'apply' ? groupPick(i, e) : groupClick(i))} oncontextmenu={(e) => S.menu(e, [{ label: 'Select', run: () => S.act({ SelectGroup: i }) }, { label: 'Add to selection', run: () => groupPick(i, new MouseEvent('click', { ctrlKey: true })) }, { label: 'Remove from selection', run: () => groupPick(i, new MouseEvent('click', { shiftKey: true })) }, { label: 'Add selection to group', disabled: !live.selection.length, run: () => addToGroup(i) }, { label: 'Edit…', run: () => S.openWin('group', i) }, { label: 'Update from selection', run: () => S.act({ UpdateGroup: i }) }, { label: 'Rename…', run: () => groupRename(i) }, { sep: true }, { label: 'Delete', danger: true, run: () => S.act({ DeleteGroup: i }) }])}><span class="sw" style="background:{GC[i % GC.length]}"></span><span class="n">{i + 1}</span><span class="nm">{g.name}</span><span class="v">{g.ids.length}</span></button>
           {/each}
           {#each Array(fill(show.groups.length, 6)) as _, k}<div class="cellx" role="presentation" oncontextmenu={(e) => S.menu(e, [{ label: 'Record group from selection', disabled: !live.selection.length, run: recGroup }])}><i>{show.groups.length + k + 1}</i></div>{/each}
         </div>
@@ -202,9 +228,9 @@
           {#each fcIds as f}
             {@const lf = liveFx.get(f.id)}
             <button class="pad" class:sel={sel.has(f.id)} class:last={live.last_selected === f.id} class:conflict={live.conflicts.includes(f.id)}
-              onclick={(e) => clickFixture(f.id, e)} oncontextmenu={(e) => S.menu(e, [{ label: 'Select only', run: () => S.act({ Select: f.id }) }, { label: sel.has(f.id) ? 'Remove from selection' : 'Add to selection', run: () => S.act({ Toggle: f.id }) }, { label: 'Select all', run: () => S.act('SelectAll') }, { label: 'Deselect all', run: () => S.act('ClearSelection') }, { sep: true }, { label: 'Edit…', run: () => S.openWin('fixture', f.id) }, { label: 'Rename…', run: async () => { const n = await S.ask('Rename fixture', f.name); if (n) S.act({ RenameFixture: [f.id, n] }) } }, { label: 'Record group from selection', run: recGroup }, { sep: true }, { label: 'Remove fixture', danger: true, run: () => S.act({ RemoveFixture: f.id }) }])}>
+              onpointerdown={(e) => padDown(f.id, e)} onpointerenter={(e) => padEnter(f.id, e)} oncontextmenu={(e) => S.menu(e, [{ label: 'Select only', run: () => S.act({ Select: f.id }) }, { label: sel.has(f.id) ? 'Remove from selection' : 'Add to selection', run: () => S.act({ Toggle: f.id }) }, { label: 'Select all', run: () => S.act('SelectAll') }, { label: 'Deselect all', run: () => S.act('ClearSelection') }, { sep: true }, { label: 'Edit…', run: () => S.openWin('fixture', f.id) }, { label: 'Rename…', run: async () => { const n = await S.ask('Rename fixture', f.name); if (n) S.act({ RenameFixture: [f.id, n] }) } }, { label: 'Same type', run: sameType }, { sep: true }, ...show.groups.slice(0, 8).map((g, i): MenuItem => ({ label: `Add selection to “${g.name}”`, run: () => addToGroup(i) })), { label: 'Record group from selection', run: recGroup }, { sep: true }, { label: 'Remove fixture', danger: true, run: () => S.act({ RemoveFixture: f.id }) }])}>
               <span class="sw" style="background:rgb({lf?.rgb.join(',') ?? '60,60,60'})"></span>
-              <span class="n">{f.id}</span><span class="nm">{f.name}</span><span class="v">{Math.round((lf?.level ?? 0) * 100)}%</span>
+              <span class="n">{f.id}</span><span class="nm">{f.name}</span>{#each groupsOf(f.id).slice(0, 4) as x, gi}<span class="gd" style="background:{GC[x.i % GC.length]};left:{3 + gi * 7}px"></span>{/each}<span class="v">{Math.round((lf?.level ?? 0) * 100)}%</span>
             </button>
           {/each}
           {#each Array(fill(fcIds.length, 6)) as _, k}<div class="cellx" role="presentation" oncontextmenu={(e) => S.menu(e, [{ label: 'Select all', run: () => S.act('SelectAll') }, { label: 'Deselect all', run: () => S.act('ClearSelection') }, { label: 'Invert selection', run: () => S.act('InvertSelection') }])}><i>{fcIds.length + k + 1}</i></div>{/each}
@@ -215,32 +241,6 @@
       <button class="tab" data-k="G" style="--tc:#3a8ee0" class:on={fcTab === 'groups'} onclick={() => (fcTab = 'groups')}>Groups <span class="cnt">{show.groups.length}</span></button>
       <button class="tab" data-k="F" style="--tc:#3fbf55" class:on={fcTab === 'fixtures'} onclick={() => (fcTab = 'fixtures')}>Fixtures <span class="cnt">{show.fixtures.length}</span></button>
       <button class="tab" data-k="S" style="--tc:#e0a030" class:on={fcTab === 'selected'} onclick={() => (fcTab = 'selected')}>Selected <span class="cnt">{live.selection.length}</span></button>
-    </footer>
-  </section>
-
-  <section class="win pr">
-    <header>
-      <Tool icon={Save} label="Record" acc="var(--red-hi)" onclick={recPreset} title="Store the programmer values of this type as a preset" />
-      <Tool icon={RefreshCw} label="Update" acc="var(--yellow)" on={mode === 'update'} onclick={() => setMode('update')} />
-      <Tool icon={Pencil} label="Rename" acc="var(--blue)" on={mode === 'rename'} onclick={() => setMode('rename')} />
-      <Tool icon={Trash2} label="Delete" acc="var(--red-hi)" on={mode === 'delete'} onclick={() => setMode('delete')} />
-      <div class="title">Presets <Info text="Record stores the current programmer values of the active preset type. Choose Update, Rename or Delete first, then click a preset. Click a preset to apply it to the selected fixtures." /></div>
-    </header>
-    <div class="body">
-      <div class="padgrid" style="--cols:5">
-        {#each presets as { p, i }}
-          <button class="pad" onclick={() => presetClick(i)} oncontextmenu={(e) => S.menu(e, [{ label: 'Apply', run: () => S.act({ ApplyPalette: i }) }, { label: 'Edit…', run: () => S.openWin('preset', i) }, { label: 'Update from programmer', run: () => S.act({ UpdatePalette: i }) }, { label: 'Rename…', run: async () => { const n = await S.ask('Rename preset', p.name); if (n) S.act({ RenamePalette: [i, n] }) } }, { sep: true }, { label: 'Delete', danger: true, run: () => S.act({ DeletePalette: i }) }])}>
-            <span class="sw" style="background:{p.kind === 'Color' ? `rgb(${p.values.Red ?? 0},${p.values.Green ?? 0},${p.values.Blue ?? 0})` : TC[p.kind]}"></span>
-            <span class="n">{i + 1}</span><span class="nm">{p.name}</span>
-          </button>
-        {/each}
-        {#each Array(fill(presets.length, 5)) as _, k}<div class="cellx" role="presentation" oncontextmenu={(e) => S.menu(e, [{ label: `Record ${pTab} preset`, run: recPreset }])}><i>{presets.length + k + 1}</i></div>{/each}
-      </div>
-    </div>
-    <footer class="tabs">
-      {#each [['I', 'Intensity'], ['P', 'Position'], ['C', 'Color'], ['B', 'Beam']] as [k, n]}
-        <button class="tab" data-k={k} style="--tc:{TC[n]}" class:on={pTab === n} onclick={() => (pTab = n as Kind)}>{n} <span class="cnt">{show.palettes.filter((p) => p.kind === n).length}</span></button>
-      {/each}
     </footer>
   </section>
 
@@ -345,8 +345,10 @@
 </div>
 
 <style>
-  .compose { display: grid; height: 100%; gap: 2px; grid-template-columns: minmax(320px, 1fr) minmax(300px, 1fr) minmax(420px, 1.25fr); grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-areas: 'fc pr par' 'prog prog par'; padding: 2px; }
-  .fc { grid-area: fc; } .pr { grid-area: pr; } .prog { grid-area: prog; } .par { grid-area: par; }
+  .compose { display: grid; height: 100%; gap: 2px; grid-template-columns: minmax(520px, 1.15fr) minmax(460px, 1fr); grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-areas: 'fc par' 'prog par'; padding: 2px; }
+  .fc { grid-area: fc; } .prog { grid-area: prog; } .par { grid-area: par; }
+  .selbar { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-bottom: 1px solid var(--line); font-size: 11px; }
+  .gd { position: absolute; bottom: 4px; width: 5px; height: 5px; border-radius: 50%; }
   .fkeys { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; padding: 3px; }
   .fk { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 2px; background: var(--btn); border: 1px solid var(--line-hi); font-size: 10px; color: #bbb; }
   .fk b { color: var(--orange); font-size: 10px; } .fk:hover { background: var(--btn-hi); border-color: #888; }
