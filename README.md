@@ -14,11 +14,11 @@ Alle Bedienelemente steuern die Engine nur über `engine::Action`.
 ## Oberfläche (`ui/src`)
 - `store.svelte.ts` – Zustand: Polling der Engine, `act`/`cmd`, Rechtsklick-Menü, Fenster, Dialoge.
 - `App.svelte` – Rahmen: Kopfzeile, linke Navigation, Bank, Befehlszeile.
-- Ansichten: `Compose` (Fixture Center, Programmer, Parameter), `Presets`, `Playback`, `Plan`, `Patch`, `Output`.
+- Ansichten: `Compose` (Fixture Center, Programmer, Parameter), `Presets`, `Playback`, `Plan`, `Patch`, `Output`, `Universes` (Belegung, Live-Raster, Auto-Adresse).
 - `Windows.svelte` – frei verschiebbare Fenster: Editoren (Cue, Cuelist, FX, Gruppe, Preset, Fixture), Keypad und alle Ansichten
   (Menü *Windows*, Liste in `WIN_VIEWS`). `CueValues` und `Status` gibt es nur als Fenster.
 - Auswahl: Klick, Ziehen, Strg (umschalten), Shift (Bereich); Gruppen mit Strg/Shift hinzufügen/entfernen; Tabellen haben Mehrfachauswahl.
-- Anpassen: Trennlinien ziehen (über der Bank, zwischen den Compose-Spalten/-Zeilen; Doppelklick = Standard, *Windows → Reset layout*), gespeichert im Browser-Speicher. Eigene Fixture-Typen: *Patch → Create fixture type…* (`FixtureEditor`).
+- Anpassen: Trennlinien ziehen (über der Bank, zwischen den Compose-Spalten/-Zeilen; Doppelklick = Standard, *Windows → Reset layout*), gespeichert im Browser-Speicher. Patch, Playback, Output, Stage und Universes haben eine ziehbare rechte Spalte. Tastatur: Strg+1–7 Ansicht, Strg+A alles, Esc schließt Menü/Fenster/Auswahl. Ansicht und Fenster werden gemerkt; *Windows* bietet Workspaces speichern/laden sowie Tile/Cascade. Eigene Fixture-Typen (bearbeiten/löschen im Patch): *Patch → Create fixture type…* (`FixtureEditor`).
 
 ## Starten
 ```

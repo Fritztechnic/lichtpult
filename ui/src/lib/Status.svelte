@@ -14,16 +14,16 @@
 <div class="st">
   <dl>
     <dt>Show</dt><dd>{show.name}</dd>
-    <dt>Fixtures</dt><dd>{show.fixtures.length} <span class="dim">({channels} Kanäle, {unis} Universen)</span></dd>
-    <dt>Auswahl</dt><dd>{live.selection.length}</dd>
-    <dt>Adresskonflikte</dt><dd class:bad={live.conflicts.length > 0}>{live.conflicts.length || 'keine'}</dd>
+    <dt>Fixtures</dt><dd>{show.fixtures.length} <span class="dim">({channels} channels, {unis} universes)</span></dd>
+    <dt>Selection</dt><dd>{live.selection.length}</dd>
+    <dt>Address overlaps</dt><dd class:bad={live.conflicts.length > 0}>{live.conflicts.length || 'none'}</dd>
     <dt>Grand Master</dt><dd>{Math.round((live.master / 255) * 100)}%</dd>
     <dt>Blackout / Blind / Highlight</dt><dd>{flag(live.blackout)} / {flag(live.blind)} / {flag(live.highlight)}</dd>
-    <dt>Programmer</dt><dd>{Object.keys(live.programmer).length} Fixtures</dd>
-    <dt>Geparkt</dt><dd>{Object.keys(live.parked).length} Fixtures</dd>
-    <dt>Effekte</dt><dd>{fx} von {show.effects.length} laufen</dd>
+    <dt>Programmer</dt><dd>{Object.keys(live.programmer).length} fixtures</dd>
+    <dt>Parked</dt><dd>{Object.keys(live.parked).length} fixtures</dd>
+    <dt>Effects</dt><dd>{fx} of {show.effects.length} running</dd>
     <dt>Cuelists</dt>
-    <dd>{#each running as { p, i }}<div>{show.lists[i].name}: Cue {(p.cue ?? 0) + 1} <span class="dim">({Math.round(p.level * 100)}%)</span></div>{:else}<span class="dim">keine läuft</span>{/each}</dd>
+    <dd>{#each running as { p, i }}<div>{show.lists[i].name}: Cue {(p.cue ?? 0) + 1} <span class="dim">({Math.round(p.level * 100)}%)</span></div>{:else}<span class="dim">none running</span>{/each}</dd>
   </dl>
 </div>
 

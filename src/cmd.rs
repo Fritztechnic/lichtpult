@@ -84,7 +84,7 @@ impl Cursor<'_> {
     fn index(&mut self, what: &str) -> Result<usize, String> {
         match self.number() {
             Some(n) if n >= 1.0 => Ok(n as usize - 1),
-            _ => Err(format!("{what}: Nummer ab 1 erwartet")),
+            _ => Err(format!("{what}: number from 1 expected")),
         }
     }
 }
@@ -97,7 +97,7 @@ fn value(c: &mut Cursor) -> Result<u8, String> {
     match c.next() {
         Some("full" | "voll") => Ok(255),
         Some("out" | "aus") => Ok(0),
-        _ => Err("Wert erwartet (0–100, full oder out)".into()),
+        _ => Err("value expected (0–100, full or out)".into()),
     }
 }
 
@@ -106,7 +106,7 @@ pub fn parse(line: &str, e: &Engine) -> Result<Vec<Action>, String> {
     for stmt in line.split(';').map(str::trim).filter(|s| !s.is_empty()) {
         statement(stmt, e, &mut out)?;
     }
-    if out.is_empty() { Err("Leere Eingabe".into()) } else { Ok(out) }
+    if out.is_empty() { Err("Empty input".into()) } else { Ok(out) }
 }
 
 fn statement(stmt: &str, e: &Engine, out: &mut Vec<Action>) -> Result<(), String> {
@@ -157,7 +157,7 @@ fn statement(stmt: &str, e: &Engine, out: &mut Vec<Action>) -> Result<(), String
         }
         "park" => {
             c.next();
-            let a = c.next().map_or(Some(Attr::Dimmer), attr_of).ok_or("park: Attribut erwartet")?;
+            let a = c.next().map_or(Some(Attr::Dimmer), attr_of).ok_or("park: attribute expected")?;
             out.push(Action::Park(a));
         }
         "unpark" => {
@@ -183,7 +183,7 @@ fn statement(stmt: &str, e: &Engine, out: &mut Vec<Action>) -> Result<(), String
         }
         "speed" => {
             c.next();
-            out.push(Action::FadeSpeed(c.number().ok_or("speed: Prozent erwartet")? / 100.0));
+            out.push(Action::FadeSpeed(c.number().ok_or("speed: percent expected")? / 100.0));
         }
         "delete" => {
             c.next();
@@ -191,12 +191,12 @@ fn statement(stmt: &str, e: &Engine, out: &mut Vec<Action>) -> Result<(), String
                 Some("cue" | "scene" | "szene") => out.push(Action::DeleteCue(c.index("delete cue")?)),
                 Some("group" | "gruppe") => out.push(Action::DeleteGroup(c.index("delete group")?)),
                 Some("palette" | "pal") => out.push(Action::DeletePalette(c.index("delete palette")?)),
-                _ => return Err("delete: cue, group oder palette".into()),
+                _ => return Err("delete: cue, group or palette".into()),
             }
         }
         "fan" => {
             c.next();
-            let a = c.next().and_then(attr_of).ok_or("fan: Attribut erwartet")?;
+            let a = c.next().and_then(attr_of).ok_or("fan: attribute expected")?;
             let from = value(&mut c)?;
             if matches!(c.peek(), Some("thru" | "bis" | ">")) {
                 c.next();
@@ -235,17 +235,17 @@ fn statement(stmt: &str, e: &Engine, out: &mut Vec<Action>) -> Result<(), String
                 Some("scene" | "szene") => out.push(Action::StoreScene),
                 Some("group" | "gruppe") => out.push(Action::RecordGroup),
                 Some("palette" | "pal") => {
-                    let k = c.next().and_then(kind_of).ok_or("record palette: intensity, color, position oder beam")?;
+                    let k = c.next().and_then(kind_of).ok_or("record palette: intensity, color, position or beam")?;
                     out.push(Action::RecordPalette(k));
                 }
-                Some(k) => out.push(Action::RecordPalette(kind_of(k).ok_or(format!("Unbekannt: record {k}"))?)),
+                Some(k) => out.push(Action::RecordPalette(kind_of(k).ok_or(format!("Unknown: record {k}"))?)),
                 None => out.push(Action::RecordCue),
             }
         }
         _ => selection(&mut c, e, out)?,
     }
     match c.peek() {
-        Some(x) => Err(format!("Unerwartet: „{x}“")),
+        Some(x) => Err(format!("Unexpected: „{x}“")),
         None => Ok(()),
     }
 }
@@ -275,13 +275,13 @@ fn selection(c: &mut Cursor, e: &Engine, out: &mut Vec<Action>) -> Result<(), St
             Some("group" | "gruppe") => {
                 c.next();
                 let g = c.index("group")?;
-                e.show.groups.get(g).ok_or("Gruppe existiert nicht")?.ids.clone()
+                e.show.groups.get(g).ok_or("Group does not exist")?.ids.clone()
             }
             Some(w) if w.parse::<u32>().is_ok() => {
                 let a = c.number().unwrap() as u32;
                 let b = if matches!(c.peek(), Some("thru" | "bis" | ">")) {
                     c.next();
-                    c.number().ok_or("thru: Endnummer erwartet")? as u32
+                    c.number().ok_or("thru: end number expected")? as u32
                 } else {
                     a
                 };
@@ -316,11 +316,11 @@ fn selection(c: &mut Cursor, e: &Engine, out: &mut Vec<Action>) -> Result<(), St
             c.next();
             out.push(Action::SetAttr(a, value(c)?));
         } else {
-            return if did { Err(format!("Unerwartet: „{w}“")) } else { Err(format!("Unbekannter Befehl: „{w}“")) };
+            return if did { Err(format!("Unexpected: „{w}“")) } else { Err(format!("Unknown command: „{w}“")) };
         }
         did = true;
     }
-    if did { Ok(()) } else { Err("Leere Eingabe".into()) }
+    if did { Ok(()) } else { Err("Empty input".into()) }
 }
 
 #[cfg(test)]

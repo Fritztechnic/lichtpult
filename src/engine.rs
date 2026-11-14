@@ -845,7 +845,7 @@ impl Engine {
             Action::ClearProgrammer => self.programmer.clear(),
             Action::RecordGroup => {
                 if !self.selection.is_empty() {
-                    let name = format!("Gruppe {}", self.show.groups.len() + 1);
+                    let name = format!("Group {}", self.show.groups.len() + 1);
                     self.show.groups.push(Group { name, ids: self.selection.iter().copied().collect() });
                 }
             }
@@ -971,7 +971,7 @@ impl Engine {
                     }
                 }
                 if !values.is_empty() {
-                    let name = format!("Szene {}", self.show.lists[l].cues.len() + 1);
+                    let name = format!("Scene {}", self.show.lists[l].cues.len() + 1);
                     self.show.lists[l].cues.push(Cue { name, fade: 1.0, follow: None, values, delay: 0.0, comment: String::new(), block: true });
                     self.programmer.clear();
                     let last = self.show.lists[l].cues.len() - 1;
