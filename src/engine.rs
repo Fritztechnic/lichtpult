@@ -31,6 +31,11 @@ pub struct Cue {
     #[serde(default)]
     pub follow: Option<f32>,
     pub values: Values,
+    /// Verzögerung vor Beginn der Überblendung (Sekunden).
+    #[serde(default)]
+    pub delay: f32,
+    #[serde(default)]
+    pub comment: String,
     /// Szene: enthält den vollständigen Look und erbt nichts von vorherigen Cues.
     #[serde(default)]
     pub block: bool,
@@ -43,11 +48,20 @@ pub struct Cuelist {
     /// Nach dem letzten Cue wieder bei Cue 1 beginnen (Chase).
     #[serde(default)]
     pub looped: bool,
+    /// Chase: Cues laufen automatisch im Takt `bpm`.
+    #[serde(default)]
+    pub chase: bool,
+    #[serde(default = "default_bpm")]
+    pub bpm: f32,
+}
+
+fn default_bpm() -> f32 {
+    80.0
 }
 
 impl Cuelist {
     pub fn new(name: impl Into<String>) -> Self {
-        Cuelist { name: name.into(), cues: vec![], looped: false }
+        Cuelist { name: name.into(), cues: vec![], looped: false, chase: false, bpm: 80.0 }
     }
 }
 
@@ -57,10 +71,15 @@ pub enum Shape {
     Triangle,
     Saw,
     Square,
+    Cosine,
+    RampDown,
+    Step,
+    Bounce,
 }
 
 impl Shape {
-    pub const ALL: [Shape; 4] = [Shape::Sine, Shape::Triangle, Shape::Saw, Shape::Square];
+    pub const ALL: [Shape; 8] =
+        [Shape::Sine, Shape::Cosine, Shape::Triangle, Shape::Saw, Shape::RampDown, Shape::Square, Shape::Step, Shape::Bounce];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -68,6 +87,10 @@ impl Shape {
             Shape::Triangle => "Dreieck",
             Shape::Saw => "Sägezahn",
             Shape::Square => "Rechteck",
+            Shape::Cosine => "Cosinus",
+            Shape::RampDown => "Rampe ab",
+            Shape::Step => "Stufen",
+            Shape::Bounce => "Bounce",
         }
     }
 
@@ -79,6 +102,10 @@ impl Shape {
             Shape::Triangle => 1.0 - (2.0 * p - 1.0).abs(),
             Shape::Saw => p,
             Shape::Square => (p < 0.5) as u8 as f32,
+            Shape::Cosine => 0.5 + 0.5 * (p * std::f32::consts::TAU).cos(),
+            Shape::RampDown => 1.0 - p,
+            Shape::Step => (p * 4.0).floor() / 3.0,
+            Shape::Bounce => 1.0 - (1.0 - (2.0 * p - 1.0).abs()).powi(2),
         }
     }
 }
@@ -286,6 +313,24 @@ pub enum Action {
     SelectGroup(usize),
     SelectAll,
     ClearSelection,
+    InvertSelection,
+    /// Jedes n-te Fixture der aktuellen Auswahl behalten (ab Offset).
+    SelectEvery(usize, usize),
+    /// Auswahl um ein Fixture weiter (+1) oder zurück (-1).
+    SelectStep(i32),
+    /// Werte der Auswahl linear von `from` nach `to` auffächern.
+    Fan(Attr, u8, u8, bool),
+    SetBlind(bool),
+    Park(Attr),
+    Unpark,
+    /// Nächsten Cue sofort ohne Überblendung.
+    Snap(usize),
+    SetCueDelay(usize, f32),
+    SetCueComment(usize, String),
+    SetChase(usize, bool),
+    SetBpm(usize, f32),
+    /// Globale Überblendgeschwindigkeit (0.1..10).
+    FadeSpeed(f32),
     SetAttr(Attr, u8),
     ClearProgrammer,
     RecordGroup,
@@ -365,6 +410,10 @@ impl Action {
                 | StoreScene
                 | SetCueFade(..)
                 | SetCueFollow(..)
+                | SetCueDelay(..)
+                | SetCueComment(..)
+                | SetChase(..)
+                | SetBpm(..)
                 | DeleteCue(_)
                 | MoveCue(..)
                 | DuplicateCue(_)
@@ -407,16 +456,17 @@ pub struct Player {
     to: Values,
     fade_time: f32,
     fade_t: f32,
+    delay: f32,
     order: u64,
 }
 
 impl Player {
     fn new() -> Self {
-        Player { cue: None, level: 255, from: Values::new(), to: Values::new(), fade_time: 0.0, fade_t: 0.0, order: 0 }
+        Player { cue: None, level: 255, from: Values::new(), to: Values::new(), fade_time: 0.0, fade_t: 0.0, delay: 0.0, order: 0 }
     }
 
     fn values(&self) -> Values {
-        let k = if self.fade_time <= 0.0 { 1.0 } else { (self.fade_t / self.fade_time).min(1.0) };
+        let k = if self.fade_time <= 0.0 { f32::from(self.fade_t >= self.delay) } else { ((self.fade_t - self.delay) / self.fade_time).clamp(0.0, 1.0) };
         if k >= 1.0 {
             return self.to.clone();
         }
@@ -437,6 +487,14 @@ pub struct Engine {
     pub programmer: Values,
     pub master: u8,
     pub blackout: bool,
+    /// Blind: Programmer wird nicht ausgegeben.
+    pub blind: bool,
+    /// Geparkte Werte überschreiben alles andere.
+    pub parked: Values,
+    pub fade_speed: f32,
+    /// Zuletzt gewähltes Fixture (rot im Pult).
+    pub last_selected: Option<u32>,
+    chase_t: Vec<f32>,
     /// Aktive (bearbeitete) Cuelist.
     pub active: usize,
     pub players: Vec<Player>,
@@ -475,6 +533,11 @@ impl Engine {
             programmer: Values::new(),
             master: 255,
             blackout: false,
+            blind: false,
+            parked: Values::new(),
+            fade_speed: 1.0,
+            last_selected: None,
+            chase_t: vec![0.0; n],
             active: 0,
             players: vec![Player::new(); n],
             fx_t: 0.0,
@@ -544,9 +607,11 @@ impl Engine {
         let from = self.players[l].values();
         let to = cue.map(|i| self.state_at(l, i)).unwrap_or_default();
         let fade = cue.map_or(0.0, |i| self.show.lists[l].cues[i].fade);
+        let delay = cue.map_or(0.0, |i| self.show.lists[l].cues[i].delay);
         self.go_counter += 1;
+        self.chase_t[l] = 0.0;
         let p = &mut self.players[l];
-        (p.from, p.to, p.fade_time, p.fade_t, p.cue, p.order) = (from, to, fade, 0.0, cue, self.go_counter);
+        (p.from, p.to, p.fade_time, p.fade_t, p.delay, p.cue, p.order) = (from, to, fade, 0.0, delay, cue, self.go_counter);
     }
 
     fn go_next(&mut self, l: usize) {
@@ -572,6 +637,7 @@ impl Engine {
     /// Spieler an die Anzahl Cuelists/Cues anpassen (nach Undo, Laden, Löschen).
     fn sync_players(&mut self) {
         self.players.resize(self.show.lists.len(), Player::new());
+        self.chase_t.resize(self.players.len(), 0.0);
         self.active = self.active.min(self.show.lists.len() - 1);
         for l in 0..self.players.len() {
             match self.players[l].cue {
@@ -602,7 +668,7 @@ impl Engine {
 
     /// Fortschritt der laufenden Überblendung (0..1) einer Cueliste.
     pub fn fade_progress(&self, l: usize) -> f32 {
-        self.players.get(l).map_or(1.0, |p| if p.fade_time <= 0.0 { 1.0 } else { (p.fade_t / p.fade_time).min(1.0) })
+        self.players.get(l).map_or(1.0, |p| if p.fade_time <= 0.0 { 1.0 } else { ((p.fade_t - p.delay) / p.fade_time).clamp(0.0, 1.0) })
     }
 
     /// Tatsächlich ausgegebener DMX-Wert (inkl. Master/Blackout).
@@ -656,10 +722,12 @@ impl Engine {
             }
             Action::Select(id) => {
                 self.selection = BTreeSet::from([id]);
+                self.last_selected = Some(id);
             }
             Action::Toggle(id) => {
                 if !self.selection.remove(&id) {
                     self.selection.insert(id);
+                    self.last_selected = Some(id);
                 }
             }
             Action::Deselect(id) => {
@@ -679,6 +747,71 @@ impl Engine {
             }
             Action::SelectAll => self.selection = self.show.fixtures.iter().map(|f| f.id).collect(),
             Action::ClearSelection => self.selection.clear(),
+            Action::InvertSelection => {
+                self.selection = self.show.fixtures.iter().map(|f| f.id).filter(|id| !self.selection.contains(id)).collect();
+            }
+            Action::SelectEvery(n, offset) => {
+                let n = n.max(1);
+                self.selection = self.selection.iter().copied().enumerate().filter(|(i, _)| i % n == offset % n).map(|(_, id)| id).collect();
+            }
+            Action::SelectStep(d) => {
+                let ids: Vec<u32> = self.show.fixtures.iter().map(|f| f.id).collect();
+                if !ids.is_empty() {
+                    let cur = self.selection.iter().next().and_then(|id| ids.iter().position(|x| x == id));
+                    let i = cur.map_or(0, |i| (i as i32 + d).rem_euclid(ids.len() as i32) as usize);
+                    self.selection = BTreeSet::from([ids[i]]);
+                    self.last_selected = Some(ids[i]);
+                }
+            }
+            Action::Fan(attr, from, to, reverse) => {
+                let mut ids: Vec<u32> = self.show.fixtures.iter().filter(|f| self.selection.contains(&f.id) && self.show.has(f, attr)).map(|f| f.id).collect();
+                if reverse {
+                    ids.reverse();
+                }
+                let n = ids.len().max(2) as f32 - 1.0;
+                for (i, id) in ids.into_iter().enumerate() {
+                    let v = from as f32 + (to as f32 - from as f32) * i as f32 / n;
+                    self.programmer.entry(id).or_default().insert(attr, v.round() as u8);
+                }
+            }
+            Action::SetBlind(b) => self.blind = b,
+            Action::Park(attr) => {
+                for f in self.show.fixtures.iter().filter(|f| self.selection.contains(&f.id)) {
+                    if self.show.has(f, attr) {
+                        let v = self.output_of(f, attr);
+                        self.parked.entry(f.id).or_default().insert(attr, v);
+                    }
+                }
+            }
+            Action::Unpark => self.parked.clear(),
+            Action::Snap(i) => {
+                if i < self.players.len() {
+                    self.go_next(i);
+                    self.players[i].fade_time = 0.0;
+                    self.players[i].delay = 0.0;
+                }
+            }
+            Action::SetCueDelay(i, t) => {
+                if let Some(c) = self.show.lists[l].cues.get_mut(i) {
+                    c.delay = t.max(0.0);
+                }
+            }
+            Action::SetCueComment(i, t) => {
+                if let Some(c) = self.show.lists[l].cues.get_mut(i) {
+                    c.comment = t.chars().take(21).collect();
+                }
+            }
+            Action::SetChase(i, b) => {
+                if let Some(x) = self.show.lists.get_mut(i) {
+                    x.chase = b;
+                }
+            }
+            Action::SetBpm(i, b) => {
+                if let Some(x) = self.show.lists.get_mut(i) {
+                    x.bpm = b.clamp(1.0, 600.0);
+                }
+            }
+            Action::FadeSpeed(v) => self.fade_speed = v.clamp(0.1, 10.0),
             Action::SetAttr(a, v) => {
                 for f in self.show.fixtures.iter().filter(|f| self.selection.contains(&f.id)) {
                     if self.show.has(f, a) {
@@ -799,7 +932,7 @@ impl Engine {
                 if !self.programmer.is_empty() {
                     let name = format!("Cue {}", self.show.lists[l].cues.len() + 1);
                     let values = self.programmer.clone();
-                    self.show.lists[l].cues.push(Cue { name, fade: 2.0, follow: None, values, block: false });
+                    self.show.lists[l].cues.push(Cue { name, fade: 2.0, follow: None, values, delay: 0.0, comment: String::new(), block: false });
                 }
             }
             Action::StoreScene => {
@@ -812,7 +945,7 @@ impl Engine {
                 }
                 if !values.is_empty() {
                     let name = format!("Szene {}", self.show.lists[l].cues.len() + 1);
-                    self.show.lists[l].cues.push(Cue { name, fade: 1.0, follow: None, values, block: true });
+                    self.show.lists[l].cues.push(Cue { name, fade: 1.0, follow: None, values, delay: 0.0, comment: String::new(), block: true });
                     self.programmer.clear();
                     let last = self.show.lists[l].cues.len() - 1;
                     self.goto(l, Some(last));
@@ -1045,12 +1178,21 @@ impl Engine {
         out
     }
 
-    fn follow_cues(&mut self) {
+    fn follow_cues(&mut self, dt: f32) {
+        for l in 0..self.players.len() {
+            let list = &self.show.lists[l];
+            if list.chase && self.players[l].cue.is_some() && list.bpm > 0.0 {
+                self.chase_t[l] += dt;
+                if self.chase_t[l] >= 60.0 / list.bpm {
+                    self.go_next(l);
+                }
+            }
+        }
         for l in 0..self.players.len() {
             let p = &self.players[l];
             let Some(c) = p.cue else { continue };
             if let Some(f) = self.show.lists[l].cues[c].follow {
-                if p.fade_t >= p.fade_time + f {
+                if p.fade_t >= p.delay + p.fade_time + f {
                     self.go_next(l);
                 }
             }
@@ -1073,7 +1215,9 @@ impl Engine {
 
     /// Wert eines Attributs nach Programmer/Playback und Effekten (0..255, mit Nachkommaanteil).
     fn eval(&self, f: &Fixture, a: Attr, play: &Values, fx: &[(&Effect, f32)]) -> f32 {
-        let mut v = self.programmer.get(&f.id).and_then(|m| m.get(&a)).copied().unwrap_or_else(|| get(play, f.id, a)) as f32;
+        let prog = if self.blind { None } else { self.programmer.get(&f.id).and_then(|m| m.get(&a)).copied() };
+        let parked = self.parked.get(&f.id).and_then(|m| m.get(&a)).copied();
+        let mut v = parked.or(prog).unwrap_or_else(|| get(play, f.id, a)) as f32;
         for &(e, phase) in fx {
             let depth = e.size as f32 / 255.0;
             match e.target {
@@ -1113,10 +1257,10 @@ impl Engine {
     /// Schritt `dt` Sekunden weiter und DMX-Frames neu berechnen.
     pub fn tick(&mut self, dt: f32) {
         for p in &mut self.players {
-            p.fade_t += dt;
+            p.fade_t += dt * self.fade_speed;
         }
         self.fx_t += dt;
-        self.follow_cues();
+        self.follow_cues(dt);
         let play = self.playback_values();
         let mut frames: BTreeMap<u16, Frame> = BTreeMap::new();
         for f in &self.show.fixtures {
@@ -1386,5 +1530,41 @@ mod tests {
         e.apply(Action::GotoCue(1));
         e.tick(5.0);
         assert_eq!(e.frames[&1][4], 100);
+    }
+
+    #[test]
+    fn selection_tools_fan_and_blind() {
+        let mut e = Engine::new(Show::default());
+        e.apply(Action::AddFixtures { ty: 0, count: 4, universe: 1, address: 1 });
+        e.apply(Action::SelectAll);
+        e.apply(Action::SelectEvery(2, 1));
+        assert_eq!(e.selection.iter().copied().collect::<Vec<_>>(), vec![2, 4]);
+        e.apply(Action::InvertSelection);
+        assert_eq!(e.selection.iter().copied().collect::<Vec<_>>(), vec![1, 3]);
+        e.apply(Action::SelectAll);
+        e.apply(Action::Fan(Attr::Dimmer, 0, 90, false));
+        assert_eq!(e.programmer[&3][&Attr::Dimmer], 60);
+        e.tick(0.01);
+        assert_eq!(e.frames[&1][3], 90);
+        e.apply(Action::SetBlind(true));
+        e.tick(0.01);
+        assert_eq!(e.frames[&1][3], 0);
+    }
+
+    #[test]
+    fn cue_delay_holds_fade_back() {
+        let mut e = Engine::new(Show::default());
+        e.apply(Action::AddFixtures { ty: 0, count: 1, universe: 1, address: 1 });
+        e.apply(Action::SelectAll);
+        e.apply(Action::SetAttr(Attr::Dimmer, 200));
+        e.apply(Action::StoreScene);
+        e.apply(Action::SetCueFade(0, 0.0));
+        e.apply(Action::SetCueDelay(0, 1.0));
+        e.apply(Action::ReleaseList(0));
+        e.apply(Action::GotoCue(0));
+        e.tick(0.5);
+        assert_eq!(e.frames[&1][0], 0);
+        e.tick(0.6);
+        assert_eq!(e.frames[&1][0], 200);
     }
 }

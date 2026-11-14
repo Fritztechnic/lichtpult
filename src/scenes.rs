@@ -71,6 +71,16 @@ impl App {
             if ui.checkbox(&mut looped, "Schleife").on_hover_text("Nach der letzten Szene wieder bei der ersten beginnen").changed() {
                 acts.push(Action::SetLooped(active, looped));
             }
+            let mut chase = list.chase;
+            if ui.checkbox(&mut chase, "Chase").on_hover_text("Cues laufen automatisch im Takt (BPM) durch – Onyx-Typ CH").changed() {
+                acts.push(Action::SetChase(active, chase));
+            }
+            if chase {
+                let mut bpm = list.bpm;
+                if ui.add(egui::DragValue::new(&mut bpm).speed(0.5).range(1.0..=600.0).suffix(" BPM")).changed() {
+                    acts.push(Action::SetBpm(active, bpm));
+                }
+            }
             if e.show.lists.len() > 1 && theme::icon_btn(ui, "trash", "Liste löschen").clicked() {
                 acts.push(Action::DeleteList(active));
             }
@@ -251,6 +261,18 @@ impl App {
             let mut fade = c.fade;
             if ui.add(egui::DragValue::new(&mut fade).speed(0.05).range(0.0..=300.0).suffix(" s")).changed() {
                 acts.push(Action::SetCueFade(i, fade));
+            }
+            ui.end_row();
+            ui.label("Verzögerung");
+            let mut delay = c.delay;
+            if ui.add(egui::DragValue::new(&mut delay).speed(0.05).range(0.0..=300.0).suffix(" s")).on_hover_text("Wartezeit, bevor die Überblendung beginnt (Delay)").changed() {
+                acts.push(Action::SetCueDelay(i, delay));
+            }
+            ui.end_row();
+            ui.label("Kommentar");
+            let mut comment = c.comment.clone();
+            if ui.add(egui::TextEdit::singleline(&mut comment).desired_width(150.0)).changed() {
+                acts.push(Action::SetCueComment(i, comment));
             }
             ui.end_row();
             ui.label("Automatisch weiter");

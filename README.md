@@ -45,3 +45,11 @@ Mehrere Cuelisten mit Playback-Fadern, Follow/Loop, HTP/LTP-Mischung, Effekt-Eng
 Trigger/Timecode, 3D-Visualizer, herstellerspezifische Pult-Protokolle (z. B. NX-Touch)
 
 Lizenz: MIT
+
+## Onyx-Werkzeuge
+
+- Auswahl: Invert, Jedes 2., Gegenreihe, Last/Next (Bild ab/auf), zuletzt gewähltes Fixture rot.
+- Programmer: Blind (Strg+P), Park/Unpark, Fan (`fan red 0 thru 100`), Entf = Programmer leeren.
+- Cues: Verzögerung, Kommentar, Snap (Pos1), globale Überblendgeschwindigkeit; Chase-Listen mit BPM.
+- Effekte: 8 Wellenformen, Tempo in BPM.
+- Befehlszeile (Strg+L): `invert`, `every 2`, `full`, `blind`, `park`, `snap`, `delete cue 2`, `speed 50` u. a.

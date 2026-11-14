@@ -18,7 +18,7 @@ fn tokens(line: &str) -> Vec<String> {
             cur.push(if c == ',' { '.' } else { c });
         } else {
             flush(&mut cur, &mut out);
-            if matches!(c, '@' | '+' | '-' | '>') {
+            if matches!(c, '@' | '+' | '-' | '>' | '/') {
                 out.push(c.to_string());
             }
         }
@@ -139,9 +139,74 @@ fn statement(stmt: &str, e: &Engine, out: &mut Vec<Action>) -> Result<(), String
             let l = c.index("level")?;
             out.push(Action::SetLevel(l, value(&mut c)?));
         }
-        "clear" | "leeren" => out.push(Action::ClearProgrammer),
-        "undo" => out.push(Action::Undo),
-        "redo" => out.push(Action::Redo),
+        "clear" | "leeren" => {
+            c.next();
+            out.push(Action::ClearProgrammer);
+        }
+        "snap" => {
+            c.next();
+            out.push(Action::Snap(list(&mut c)));
+        }
+        "blind" | "preview" => {
+            c.next();
+            out.push(Action::SetBlind(!matches!(c.next(), Some("off" | "aus"))));
+        }
+        "park" => {
+            c.next();
+            let a = c.next().map_or(Some(Attr::Dimmer), attr_of).ok_or("park: Attribut erwartet")?;
+            out.push(Action::Park(a));
+        }
+        "unpark" => {
+            c.next();
+            out.push(Action::Unpark);
+        }
+        "invert" | "/" => {
+            c.next();
+            out.push(Action::InvertSelection);
+        }
+        "next" => {
+            c.next();
+            out.push(Action::SelectStep(1));
+        }
+        "last" | "prev" => {
+            c.next();
+            out.push(Action::SelectStep(-1));
+        }
+        "every" => {
+            c.next();
+            let n = c.index("every")? + 1;
+            out.push(Action::SelectEvery(n, 0));
+        }
+        "speed" => {
+            c.next();
+            out.push(Action::FadeSpeed(c.number().ok_or("speed: Prozent erwartet")? / 100.0));
+        }
+        "delete" => {
+            c.next();
+            match c.next() {
+                Some("cue" | "scene" | "szene") => out.push(Action::DeleteCue(c.index("delete cue")?)),
+                Some("group" | "gruppe") => out.push(Action::DeleteGroup(c.index("delete group")?)),
+                Some("palette" | "pal") => out.push(Action::DeletePalette(c.index("delete palette")?)),
+                _ => return Err("delete: cue, group oder palette".into()),
+            }
+        }
+        "fan" => {
+            c.next();
+            let a = c.next().and_then(attr_of).ok_or("fan: Attribut erwartet")?;
+            let from = value(&mut c)?;
+            if matches!(c.peek(), Some("thru" | "bis" | ">")) {
+                c.next();
+            }
+            out.push(Action::Fan(a, from, value(&mut c)?, false));
+        }
+        "undo" => {
+            c.next();
+            out.push(Action::Undo);
+        }
+        "redo" => {
+            c.next();
+            out.push(Action::Redo);
+        }
         "blackout" | "bo" => {
             c.next();
             out.push(Action::Blackout(!matches!(c.next(), Some("off" | "aus"))));
@@ -234,7 +299,10 @@ fn selection(c: &mut Cursor, e: &Engine, out: &mut Vec<Action>) -> Result<(), St
     }
     let mut did = touched;
     while let Some(w) = c.peek() {
-        if w == "@" {
+        if w == "full" {
+            c.next();
+            out.push(Action::SetAttr(Attr::Dimmer, 255));
+        } else if w == "@" {
             c.next();
             out.push(Action::SetAttr(Attr::Dimmer, value(c)?));
         } else if matches!(w, "palette" | "pal") {
@@ -282,6 +350,17 @@ mod tests {
         assert_eq!(dbg("record cue", &e), "[RecordCue]");
         assert_eq!(dbg("rec color", &e), "[RecordPalette(Color)]");
         assert_eq!(dbg("fx stop", &e), "[StopEffects]");
+    }
+
+    #[test]
+    fn onyx_tools() {
+        let e = engine();
+        assert_eq!(dbg("invert", &e), "[InvertSelection]");
+        assert_eq!(dbg("1 thru 4 full", &e), "[SelectIds([1, 2, 3, 4]), SetAttr(Dimmer, 255)]");
+        assert_eq!(dbg("every 2", &e), "[SelectEvery(2, 0)]");
+        assert_eq!(dbg("fan red 0 thru 100", &e), "[Fan(Red, 0, 255, false)]");
+        assert_eq!(dbg("blind; snap", &e), "[SetBlind(true), Snap(0)]");
+        assert_eq!(dbg("delete cue 2", &e), "[DeleteCue(1)]");
     }
 
     #[test]

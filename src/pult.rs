@@ -62,8 +62,8 @@ impl App {
     pub fn pult(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
         let accent = self.accent();
         let has_sel = !e.selection.is_empty();
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
             let tb = |ui: &mut egui::Ui, icon: &str, text: &str, on: bool, tip: &str| ui.add_enabled(on, theme::icon_text(icon, text, theme::TEXT).min_size(egui::vec2(0.0, 32.0))).on_hover_text(tip).clicked();
             if tb(ui, "grid", "Alle", !e.show.fixtures.is_empty(), "Alle Fixtures auswählen") {
                 acts.push(Action::SelectAll);
@@ -71,9 +71,31 @@ impl App {
             if tb(ui, "x", "Keine", has_sel, "Auswahl aufheben") {
                 acts.push(Action::ClearSelection);
             }
+            if tb(ui, "grid", "Invert", !e.show.fixtures.is_empty(), "Auswahl umkehren (Onyx: /)") {
+                acts.push(Action::InvertSelection);
+            }
+            if tb(ui, "grid", "Jedes 2.", e.selection.len() > 1, "Nur jedes zweite Fixture der Auswahl behalten (Every 2)") {
+                acts.push(Action::SelectEvery(2, 0));
+            }
+            if tb(ui, "grid", "Gegenreihe", e.selection.len() > 1, "Jedes zweite Fixture, versetzt (Every 2, Offset 1)") {
+                acts.push(Action::SelectEvery(2, 1));
+            }
+            if tb(ui, "x", "◀ Last", !e.show.fixtures.is_empty(), "Vorheriges Fixture wählen (PgDn)") {
+                acts.push(Action::SelectStep(-1));
+            }
+            if tb(ui, "x", "Next ▶", !e.show.fixtures.is_empty(), "Nächstes Fixture wählen (PgUp)") {
+                acts.push(Action::SelectStep(1));
+            }
+            let blind = if e.blind { "Blind: AN" } else { "Blind" };
+            if tb(ui, "x", blind, true, "Blind/Preview: Programmer wird nicht ausgegeben (Strg+P)") {
+                acts.push(Action::SetBlind(!e.blind));
+            }
+            if tb(ui, "x", "Unpark", !e.parked.is_empty(), "Alle geparkten Werte freigeben") {
+                acts.push(Action::Unpark);
+            }
             ui.add_space(8.0);
             theme::info(ui, "Fixtures wählen", "Klick wählt ein Fixture, Strg/Shift + Klick mehrere. Mit den Reitern unten stellst du die Auswahl ein. Der Streifen eines Pads zeigt Farbe und Helligkeit live.");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            {
                 let store = theme::icon_text("plus", "Als Szene speichern", Color32::BLACK).fill(accent).min_size(egui::vec2(170.0, 32.0));
                 if ui.add_enabled(!e.show.fixtures.is_empty(), store).on_hover_text("Hält den aktuellen Look fest. Abrufen: Pad in der Playback-Leiste unten oder Tab „Szenen“.").clicked() {
                     acts.push(Action::StoreScene);
@@ -81,7 +103,7 @@ impl App {
                 if ui.add_enabled(!e.programmer.is_empty(), egui::Button::new("Programmer leeren").min_size(egui::vec2(0.0, 32.0))).on_hover_text("Alle manuellen Werte verwerfen").clicked() {
                     acts.push(Action::ClearProgrammer);
                 }
-            });
+            }
         });
         ui.add_space(6.0);
         egui::ScrollArea::vertical().id_salt("pads").auto_shrink([false, false]).show(ui, |ui| {
@@ -93,7 +115,7 @@ impl App {
                 for f in &e.show.fixtures {
                     let (hue, lvl) = live(e, f);
                     let sel = e.selection.contains(&f.id);
-                    let r = theme::pad(ui, PAD, &f.id.to_string(), &short(&f.name, 13), if conflicts.contains(&f.id) { theme::DANGER } else { hue }, sel, accent, Some(lvl));
+                    let r = theme::pad(ui, PAD, &f.id.to_string(), &short(&f.name, 13), if conflicts.contains(&f.id) { theme::DANGER } else { hue }, sel, if e.last_selected == Some(f.id) { theme::DANGER } else { accent }, Some(lvl));
                     if r.clicked() {
                         acts.push(if ui.input(|i| i.modifiers.command || i.modifiers.shift) { Action::Toggle(f.id) } else { Action::Select(f.id) });
                     }
@@ -287,6 +309,9 @@ impl App {
                         ("Lauflicht", Target::Intensity, Shape::Square),
                         ("Regenbogen", Target::Color, Shape::Sine),
                         ("Kreis", Target::Position, Shape::Sine),
+                        ("Rampe", Target::Intensity, Shape::RampDown),
+                        ("Stufen", Target::Intensity, Shape::Step),
+                        ("Bounce", Target::Intensity, Shape::Bounce),
                     ] {
                         let strip = match t {
                             Target::Intensity => theme::kind_color(Kind::Intensity),
@@ -318,7 +343,16 @@ impl App {
                             }
                             ui.label(RichText::new(short(&fx.name, 16)).strong().color(if fx.running { accent } else { theme::TEXT }));
                             hint(ui, &format!("{} Fixtures", fx.ids.len()));
-                            changed |= ui.add(egui::DragValue::new(&mut n.rate).speed(0.02).suffix(" Hz").range(0.01..=20.0)).on_hover_text("Geschwindigkeit").changed();
+                            egui::ComboBox::from_id_salt(("fxshape", i)).selected_text(fx.shape.name()).width(90.0).show_ui(ui, |ui| {
+                                for sh in Shape::ALL {
+                                    changed |= ui.selectable_value(&mut n.shape, sh, sh.name()).changed();
+                                }
+                            });
+                            let mut bpm = n.rate * 60.0;
+                            if ui.add(egui::DragValue::new(&mut bpm).speed(0.5).suffix(" BPM").range(1.0..=1200.0)).on_hover_text("Geschwindigkeit (Zyklen pro Minute)").changed() {
+                                n.rate = bpm / 60.0;
+                                changed = true;
+                            }
                             changed |= ui.add(egui::DragValue::new(&mut n.size).prefix("Stärke ")).changed();
                             changed |= ui.add(egui::DragValue::new(&mut n.spread).speed(0.01).prefix("Versatz ").range(0.0..=1.0)).on_hover_text("Phasenversatz zwischen den Fixtures").changed();
                             if theme::icon_btn(ui, "x", "Effekt löschen").clicked() {

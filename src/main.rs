@@ -324,12 +324,20 @@ impl App {
         let rw = 200.0;
         let right = egui::Rect::from_min_max(egui::pos2(full.right() - rw - 10.0, full.top() + 8.0), egui::pos2(full.right() - 10.0, full.bottom() - 8.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(right), |ui| {
-            ui.label(RichText::new("LISTEN-PEGEL").size(10.5).color(theme::MUTED));
             let mut lvl = e.players.get(i).map_or(255, |p| p.level) as f32 / 2.55;
             ui.spacing_mut().slider_width = 110.0;
             if ui.add(egui::Slider::new(&mut lvl, 0.0..=100.0).fixed_decimals(0).suffix("%")).changed() {
                 acts.push(Action::SetLevel(i, (lvl * 2.55).round() as u8));
             }
+            ui.horizontal(|ui| {
+                if theme::button(ui, "Snap").on_hover_text("Nächste Szene sofort, ohne Überblendung (Pos1)").clicked() {
+                    play(acts, e, Action::Snap(i));
+                }
+                let mut speed = e.fade_speed * 100.0;
+                if ui.add(egui::DragValue::new(&mut speed).speed(1.0).range(10.0..=1000.0).suffix("%")).on_hover_text("Globale Überblendgeschwindigkeit (Global Fade Speed)").changed() {
+                    acts.push(Action::FadeSpeed(speed / 100.0));
+                }
+            });
             if !e.programmer.is_empty() {
                 ui.horizontal(|ui| {
                     pill(ui, "Programmer", theme::DANGER);
@@ -450,6 +458,7 @@ impl eframe::App for App {
         if !ui.ctx().egui_wants_keyboard_input() {
             let active = e.active;
             let busy = !e.programmer.is_empty();
+            let mut extra = vec![];
             ui.input(|i| {
                 let mut p = |a: Action| {
                     if busy {
@@ -464,18 +473,40 @@ impl eframe::App for App {
                     p(Action::Back(active));
                 }
                 if i.key_pressed(egui::Key::Escape) {
-                    acts.push(Action::ClearSelection);
+                    extra.push(Action::ClearSelection);
+                }
+                if i.key_pressed(egui::Key::Tab) {
+                    p(Action::Back(active));
+                }
+                if i.key_pressed(egui::Key::Home) {
+                    p(Action::Snap(active));
+                }
+                if i.key_pressed(egui::Key::End) {
+                    extra.push(Action::ReleaseList(active));
+                }
+                if i.key_pressed(egui::Key::PageUp) {
+                    extra.push(Action::SelectStep(1));
+                }
+                if i.key_pressed(egui::Key::PageDown) {
+                    extra.push(Action::SelectStep(-1));
+                }
+                if i.key_pressed(egui::Key::Delete) {
+                    extra.push(if i.modifiers.shift { Action::ClearSelection } else { Action::ClearProgrammer });
+                }
+                if i.key_pressed(egui::Key::P) && i.modifiers.command {
+                    extra.push(Action::SetBlind(!e.blind));
                 }
                 if i.key_pressed(egui::Key::A) && i.modifiers.command {
-                    acts.push(Action::SelectAll);
+                    extra.push(Action::SelectAll);
                 }
                 if i.key_pressed(egui::Key::Z) && i.modifiers.command {
-                    acts.push(if i.modifiers.shift { Action::Redo } else { Action::Undo });
+                    extra.push(if i.modifiers.shift { Action::Redo } else { Action::Undo });
                 }
                 if i.key_pressed(egui::Key::Y) && i.modifiers.command {
-                    acts.push(Action::Redo);
+                    extra.push(Action::Redo);
                 }
             });
+            acts.extend(extra);
         }
         if ui.input(|i| i.key_pressed(egui::Key::L) && i.modifiers.command) {
             self.cmd_open = !self.cmd_open;
