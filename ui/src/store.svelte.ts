@@ -27,6 +27,22 @@ class Store {
   layout = $state<Layout>({ ...DEFAULT_LAYOUT, ...JSON.parse(localStorage.getItem('lichtpult.layout') ?? '{}') })
   saveLayout() { localStorage.setItem('lichtpult.layout', JSON.stringify(this.layout)) }
   resetLayout() { this.layout = { ...DEFAULT_LAYOUT }; this.saveLayout() }
+  // Workspaces: benannte Schnappschüsse aus Ansicht, Layout und offenen Fenstern
+  workspaces = $state<Record<string, { view: string; layout: Layout; wins: Win[] }>>(JSON.parse(localStorage.getItem('lichtpult.workspaces') ?? '{}'))
+  private storeWs() { localStorage.setItem('lichtpult.workspaces', JSON.stringify(this.workspaces)) }
+  saveWorkspace(name: string) {
+    this.workspaces[name] = $state.snapshot({ view: this.view, layout: this.layout, wins: this.wins }) as never
+    this.storeWs()
+  }
+  loadWorkspace(name: string) {
+    const w = this.workspaces[name]
+    if (!w) return
+    this.view = w.view
+    this.layout = { ...DEFAULT_LAYOUT, ...w.layout }
+    this.wins = structuredClone($state.snapshot(w.wins)) as Win[]
+    this.saveLayout()
+  }
+  deleteWorkspace(name: string) { delete this.workspaces[name]; this.storeWs() }
   wins = $state<Win[]>(this.saved.wins ?? [])
   private lastSaved = ''
   persist() {

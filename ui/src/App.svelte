@@ -95,6 +95,10 @@
     shows = await call('show_list')
     S.settings = true
   }
+  async function saveWs() {
+    const n = (await S.ask('Workspace name', ''))?.trim()
+    if (n) { S.saveWorkspace(n); S.say(`Workspace “${n}” saved`) }
+  }
   async function dlgOk(v: string | null) {
     S.dialog?.resolve(v)
     S.dialog = null
@@ -124,7 +128,7 @@
       <div class="msg" class:err={S.error}>{S.msg}</div>
       <span class="stat">{live.selection.length ? `${live.selection.length} fixture${live.selection.length > 1 ? 's' : ''} selected` : 'No fixture or zone selected'}</span>
       <span class="spacer"></span>
-      <button class="btn sm" class:on={S.wins.some((w) => w.kind === 'view')} onclick={(e) => S.menu(e, [...WIN_VIEWS.map((v, i) => ({ label: (S.wins.some((w) => w.id === 'view:' + i) ? '✓ ' : '\u2003') + v.title, run: () => S.toggleWin('view', i) })), { sep: true }, { label: 'Reset layout', run: () => S.resetLayout() }, { label: 'Close all windows', disabled: !S.wins.length, run: () => (S.wins = []) }])} aria-label="Windows"><AppWindow size={14} /> Windows</button>
+      <button class="btn sm" class:on={S.wins.some((w) => w.kind === 'view')} onclick={(e) => S.menu(e, [...WIN_VIEWS.map((v, i) => ({ label: (S.wins.some((w) => w.id === 'view:' + i) ? '✓ ' : '\u2003') + v.title, run: () => S.toggleWin('view', i) })), { sep: true }, { label: 'Reset layout', run: () => S.resetLayout() }, { label: 'Save workspace…', run: saveWs }, ...Object.keys(S.workspaces).flatMap((n) => [{ label: '\u2003Load “' + n + '”', run: () => S.loadWorkspace(n) }, { label: '\u2003Delete “' + n + '”', danger: true, run: () => S.deleteWorkspace(n) }]), { sep: true }, { label: 'Close all windows', disabled: !S.wins.length, run: () => (S.wins = []) }])} aria-label="Windows"><AppWindow size={14} /> Windows</button>
       <button class="btn sm" class:on={S.wins.some((w) => w.kind === 'keypad')} onclick={() => S.toggleWin('keypad')} aria-label="Keypad"><KeyboardIcon size={14} /> Keypad</button>
       <button class="btn sm" disabled={!live.can_undo} onclick={() => S.act('Undo')} aria-label="Undo"><Undo size={14} /></button>
       <button class="btn sm" disabled={!live.can_redo} onclick={() => S.act('Redo')} aria-label="Redo"><Redo size={14} /></button>
