@@ -30,7 +30,16 @@
     S.say(`Fixture type “${n}” deleted`)
   }
   const width = $derived(ty?.channels.length ?? 1)
-  const rows = $derived(show.fixtures.filter((f) => !filter || (f.name + show.types[f.ty]?.name).toLowerCase().includes(filter.toLowerCase())))
+  // Sortierung per Klick auf die Spaltenüberschrift (nochmal = umdrehen)
+  let sortKey = $state<'id' | 'name' | 'type' | 'ch' | 'universe' | 'address'>('id')
+  let sortDir = $state(1)
+  const sortBy = (k: typeof sortKey) => { sortDir = sortKey === k ? -sortDir : 1; sortKey = k }
+  const val = (f: (typeof show.fixtures)[number]) => (sortKey === 'type' ? show.types[f.ty]?.name : sortKey === 'ch' ? show.types[f.ty]?.channels.length : f[sortKey])
+  const rows = $derived(
+    show.fixtures
+      .filter((f) => !filter || (f.name + show.types[f.ty]?.name).toLowerCase().includes(filter.toLowerCase()))
+      .sort((a, b) => sortDir * (val(a)! < val(b)! ? -1 : val(a)! > val(b)! ? 1 : a.id - b.id)),
+  )
   const unis = $derived([...new Set([1, ...show.fixtures.map((f) => f.universe)])].sort((a, b) => a - b))
   const clash = $derived(new Set(live.conflicts))
 
@@ -95,11 +104,16 @@
     <header>
       <Tool icon={Wand} label="Auto Address" onclick={() => S.act({ AutoAddress: universe })} title="Re-address universe {universe} without gaps" />
       <div class="title">Patch <Info text="Fixtures are listed by ID. Edit universe and address inline. Auto Address closes gaps in the chosen universe in ID order. Red addresses overlap another fixture." /></div>
+      {#if live.conflicts.length}<span class="warn" title="Fixtures with overlapping addresses">{live.conflicts.length} overlapping</span>{/if}
       <input placeholder="Filter…" bind:value={filter} style="width:140px" />
     </header>
     <div class="body" style="padding:0">
       <table class="table">
-        <thead><tr><th style="width:56px">ID</th><th>Name</th><th>Type</th><th style="width:60px">Ch</th><th style="width:80px">Univ</th><th style="width:80px">Addr</th><th style="width:40px"></th></tr></thead>
+        <thead><tr>
+          {#each [['id', 'ID', 56], ['name', 'Name', 0], ['type', 'Type', 0], ['ch', 'Ch', 60], ['universe', 'Univ', 80], ['address', 'Addr', 80]] as [k, n, w]}
+            <th class="sort" style={w ? `width:${w}px` : ''} onclick={() => sortBy(k as typeof sortKey)}>{n}{sortKey === k ? (sortDir > 0 ? ' ▲' : ' ▼') : ''}</th>
+          {/each}
+          <th style="width:40px"></th></tr></thead>
         <tbody>
           {#each rows as f}
             <tr class:sel={live.selection.includes(f.id)} onclick={(e) => pick(e, f.id)} oncontextmenu={(e) => { if (!live.selection.includes(f.id)) S.act({ Select: f.id }); const t = targets(f.id); S.menu(e, [{ label: 'Select all', run: () => S.act('SelectAll') }, { label: 'Deselect all', run: () => S.act('ClearSelection') }, { label: 'Edit…', run: () => S.openWin('fixture', f.id) }, { sep: true }, { label: t.length > 1 ? `Remove ${t.length} fixtures` : 'Remove fixture', danger: true, run: () => removeIds(t) }]) }}>
@@ -155,6 +169,8 @@
 
 <style>
   .patch { display: grid; grid-template-columns: minmax(0, 1fr) var(--w); position: relative; gap: 2px; padding: 2px; height: 100%; }
+  .sort { cursor: pointer; user-select: none; }
+  .warn { color: var(--yellow); font-size: 11px; margin-right: 8px; }
   .col { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
   .row > * { flex: 1; }
   .map { display: grid; grid-template-columns: repeat(64, 1fr); gap: 1px; }
