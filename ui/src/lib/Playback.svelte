@@ -31,6 +31,7 @@
     else rows = [i]
     row = i
   }
+  const tg = (i: number) => (rows.includes(i) ? rows : [i])
   const each = (ids: number[], mk: (i: number) => any, desc = false) => { for (const i of [...ids].sort((a, b) => (desc ? b - a : a - b))) S.act(mk(i)) }
   let dragFrom = $state<number | null>(null)
   let dragOver = $state<number | null>(null)
@@ -80,11 +81,11 @@
               <td draggable="true" ondragstart={(e) => { dragFrom = i; e.dataTransfer?.setData('text/plain', String(i)) }} ondragend={() => (dragFrom = dragOver = null)} style="cursor:grab;color:#777"><GripVertical size={14} /></td>
               <td class="num mono">{i + 1}</td>
               <td>{c.name}</td>
-              <td><input value={c.follow ?? ''} placeholder="Go" onchange={(e) => S.act({ SetCueFollow: [i, e.currentTarget.value === '' ? null : num(e.currentTarget.value)] })} /></td>
-              <td><input value={c.delay} onchange={(e) => S.act({ SetCueDelay: [i, num(e.currentTarget.value)] })} /></td>
-              <td><input value={c.fade} onchange={(e) => S.act({ SetCueFade: [i, num(e.currentTarget.value)] })} /></td>
+              <td><input value={c.follow ?? ''} placeholder="Go" onchange={(e) => { const v = e.currentTarget.value === '' ? null : num(e.currentTarget.value); for (const x of tg(i)) S.act({ SetCueFollow: [x, v] }) }} /></td>
+              <td><input value={c.delay} onchange={(e) => { const v = num(e.currentTarget.value); for (const x of tg(i)) S.act({ SetCueDelay: [x, v] }) }} /></td>
+              <td><input value={c.fade} onchange={(e) => { const v = num(e.currentTarget.value); for (const x of tg(i)) S.act({ SetCueFade: [x, v] }) }} /></td>
               <td>{#if c.block}<span class="chip" style="background:var(--purple)">Scene</span>{:else}<span class="chip">Tracking</span>{/if}</td>
-              <td><input value={c.comment} onchange={(e) => S.act({ SetCueComment: [i, e.currentTarget.value] })} /></td>
+              <td><input value={c.comment} onchange={(e) => { const v = e.currentTarget.value; for (const x of tg(i)) S.act({ SetCueComment: [x, v] }) }} /></td>
             </tr>
           {/each}
           {#if !list.cues.length}<tr><td colspan="8" class="dim" style="height:60px;text-align:center">Empty cuelist. Build a look in Compose, then Record Cue or Store Scene.</td></tr>{/if}

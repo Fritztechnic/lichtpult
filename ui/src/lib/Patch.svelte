@@ -96,7 +96,7 @@
               <td><input value={f.name} onchange={(e) => S.act({ RenameFixture: [f.id, e.currentTarget.value] })} /></td>
               <td class="dim">{show.types[f.ty]?.name}</td>
               <td class="mono">{show.types[f.ty]?.channels.length}</td>
-              <td><input class="mono" value={f.universe} onchange={(e) => S.act({ SetPatch: { id: f.id, universe: num(e.currentTarget.value), address: f.address } })} /></td>
+              <td><input class="mono" value={f.universe} onchange={(e) => { const u = num(e.currentTarget.value); for (const id of targets(f.id)) { const g = show.fixtures.find((x) => x.id === id); if (g) S.act({ SetPatch: { id, universe: u, address: g.address } }) } }} /></td>
               <td style={clash.has(f.id) ? 'background:#5a1d1d' : ''}><input class="mono" value={f.address} onchange={(e) => S.act({ SetPatch: { id: f.id, universe: f.universe, address: num(e.currentTarget.value) } })} /></td>
               <td><button class="btn sm" aria-label="Remove" onclick={() => S.act({ RemoveFixture: f.id })}><Trash2 size={13} /></button></td>
             </tr>
