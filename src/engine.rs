@@ -308,6 +308,10 @@ impl Show {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Action {
     AddTypes(Vec<FixtureType>),
+    /// Fixture-Typ ersetzen (Name muss frei bleiben); gepatchte Fixtures behalten den Index.
+    UpdateType(usize, FixtureType),
+    /// Ungenutzten Fixture-Typ löschen; Indizes der übrigen Typen rücken nach.
+    RemoveType(usize),
     Select(u32),
     Toggle(u32),
     /// Auswahl um alle Fixtures mit ID von..=bis erweitern.
@@ -447,6 +451,8 @@ impl Action {
                 | SetEffect(..)
                 | DeleteEffect(_)
                 | AddFixtures { .. }
+                | UpdateType(..)
+                | RemoveType(_)
                 | RemoveFixture(_)
                 | AutoAddress(_)
         )
@@ -1169,6 +1175,22 @@ impl Engine {
                     }
                 }
             }
+            Action::UpdateType(i, t) => {
+                let taken = self.show.types.iter().enumerate().any(|(j, x)| j != i && x.name == t.name);
+                if i < self.show.types.len() && !taken {
+                    self.show.types[i] = t;
+                }
+            }
+            Action::RemoveType(i) => {
+                if i < self.show.types.len() && !self.show.fixtures.iter().any(|f| f.ty == i) {
+                    self.show.types.remove(i);
+                    for f in &mut self.show.fixtures {
+                        if f.ty > i {
+                            f.ty -= 1;
+                        }
+                    }
+                }
+            }
             Action::RemoveFixture(id) => {
                 self.show.fixtures.retain(|f| f.id != id);
                 self.selection.remove(&id);
@@ -1342,6 +1364,27 @@ mod tests {
         e.apply(Action::DuplicateCue(0));
         assert_eq!(e.list().cues.len(), 4);
         assert_eq!(e.cue(), Some(3));
+    }
+
+    #[test]
+    fn remove_type_only_when_unused_and_reindexes() {
+        let mut e = Engine::new(Show { types: builtin_types(), ..Show::default() });
+        e.apply(Action::AddFixtures { ty: 3, count: 1, universe: 1, address: 1 });
+        let n = e.show.types.len();
+        e.apply(Action::RemoveType(3));
+        assert_eq!(e.show.types.len(), n);
+        e.apply(Action::RemoveType(0));
+        assert_eq!(e.show.types.len(), n - 1);
+        assert_eq!(e.show.fixtures[0].ty, 2);
+    }
+
+    #[test]
+    fn update_type_rejects_duplicate_name() {
+        let mut e = Engine::new(Show { types: builtin_types(), ..Show::default() });
+        let mut t = e.show.types[1].clone();
+        t.name = e.show.types[0].name.clone();
+        e.apply(Action::UpdateType(1, t));
+        assert_ne!(e.show.types[1].name, e.show.types[0].name);
     }
 
     #[test]

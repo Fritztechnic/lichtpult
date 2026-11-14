@@ -43,7 +43,7 @@
   const title = (w: Win) => {
     switch (w.kind) {
       case 'keypad': return 'Keypad'
-      case 'typedit': return 'New fixture type'
+      case 'typedit': return w.arg ? 'Edit fixture type' : 'New fixture type'
       case 'view': return WIN_VIEWS[w.arg].title
       case 'cue': return `Cue ${w.arg + 1} · ${show.lists[live.active]?.cues[w.arg]?.name ?? ''}`
       case 'list': return `Cuelist ${w.arg + 1} · ${show.lists[w.arg]?.name ?? ''}`
@@ -70,7 +70,7 @@
       {#if w.kind === 'keypad'}
         <Keypad />
       {:else if w.kind === 'typedit'}
-        <FixtureEditor />
+        <FixtureEditor arg={w.arg} />
       {:else if w.kind === 'view'}
         {@const v = WIN_VIEWS[w.arg].id}
         {#if v === 'fc' || v === 'prog' || v === 'par'}<Compose part={v} />

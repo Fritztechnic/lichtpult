@@ -22,6 +22,13 @@
   let file: HTMLInputElement
 
   const ty = $derived(types[Math.min(tyIdx, types.length - 1)]?.t)
+  const inUse = $derived(show.fixtures.some((f) => f.ty === tyIdx))
+  async function removeType() {
+    const n = show.types[tyIdx].name
+    await S.act({ RemoveType: tyIdx })
+    tyIdx = 0
+    S.say(`Fixture type “${n}” deleted`)
+  }
   const width = $derived(ty?.channels.length ?? 1)
   const rows = $derived(show.fixtures.filter((f) => !filter || (f.name + show.types[f.ty]?.name).toLowerCase().includes(filter.toLowerCase())))
   const unis = $derived([...new Set([1, ...show.fixtures.map((f) => f.universe)])].sort((a, b) => a - b))
@@ -125,6 +132,12 @@
       </div>
       <button class="btn on" onclick={add}><Plus size={14} /> Patch {count} fixture{count > 1 ? 's' : ''}</button>
       <button class="btn" onclick={() => S.openWin('typedit')}><Wand size={14} /> Create fixture type…</button>
+      {#if tyIdx < show.types.length}
+        <div class="row">
+          <button class="btn" onclick={() => S.openWin('typedit', tyIdx + 1)}>Edit type…</button>
+          <button class="btn" disabled={inUse} title={inUse ? 'Fixtures of this type are patched' : ''} onclick={removeType}>Delete type</button>
+        </div>
+      {/if}
       <button class="btn" onclick={() => file.click()}><Upload size={14} /> Import GDTF / OFL…</button>
       <input bind:this={file} type="file" accept=".gdtf,.json" multiple hidden onchange={imp} />
       <div class="dim" style="margin-top:8px">DMX map</div>
