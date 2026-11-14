@@ -199,18 +199,14 @@ impl App {
             ui.add_space(6.0);
             ui.label(RichText::new("●").color(accent).size(12.0));
             ui.label(RichText::new("LICHTPULT").strong().size(15.0).color(theme::TEXT));
-            ui.add_space(if narrow { 8.0 } else { 18.0 });
-            ui.spacing_mut().item_spacing.x = 0.0;
-            for (v, name) in [
-                (View::Pult, "Pult"),
-                (View::Scenes, "Szenen"),
-                (View::Stage, "Bühne"),
-                (View::Patch, "Patch"),
-                (View::Output, "Ausgabe"),
-            ] {
-                if nav(ui, name, self.view == v, accent).clicked() {
-                    self.view = v;
-                }
+            ui.add_space(14.0);
+            ui.label(RichText::new(format!("GM: {}%", (e.master as u32 * 100 + 127) / 255)).size(12.5).monospace().color(theme::MUTED));
+            ui.add_space(10.0);
+            ui.label(RichText::new(short(&e.show.name, 24)).size(12.5).color(theme::MUTED));
+            if !narrow {
+                ui.add_space(10.0);
+                let n = e.selection.len();
+                ui.label(RichText::new(if n == 0 { "Keine Fixtures gewählt".to_string() } else { format!("{n} Fixture(s) gewählt") }).size(12.5).color(if n == 0 { theme::MUTED } else { theme::TEXT }));
             }
             ui.spacing_mut().item_spacing.x = 8.0;
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -225,7 +221,7 @@ impl App {
                 let mut black = e.blackout;
                 let b = egui::Button::new(RichText::new("Blackout").strong().color(if black { Color32::BLACK } else { theme::TEXT }))
                     .fill(if black { theme::DANGER } else { theme::RAISED })
-                    .min_size(egui::vec2(88.0, 32.0));
+                    .min_size(egui::vec2(88.0, 28.0));
                 if ui.add(b).clicked() {
                     black = !black;
                     acts.push(Action::Blackout(black));
@@ -235,9 +231,7 @@ impl App {
                 if ui.add(egui::Slider::new(&mut m, 0..=255).show_value(false)).changed() {
                     acts.push(Action::Master(m));
                 }
-                if !narrow {
-                    ui.label(RichText::new(format!("Master {}%", (m as u32 * 100 + 127) / 255)).size(12.5).color(theme::MUTED));
-                }
+                ui.label(RichText::new("GM").size(12.5).color(theme::MUTED));
                 ui.add_space(8.0);
                 if ui.add_enabled(e.can_redo(), egui::Button::image(theme::icon("redo", theme::TEXT, 16.0)).min_size(egui::vec2(32.0, 32.0))).on_hover_text("Wiederholen (Strg+Shift+Z)").clicked() {
                     acts.push(Action::Redo);
@@ -281,57 +275,73 @@ impl App {
         });
     }
 
-    /// Player-Leiste: Szene links, Transport in der Mitte, Helligkeit rechts.
+    /// Playback-Leiste: Transport links, Szenen als Pads, Pegel rechts.
     fn player(&mut self, ui: &mut egui::Ui, e: &Engine, acts: &mut Vec<Action>) {
         let accent = self.accent();
         let i = e.active;
         let list = e.list();
         let cur = e.cue();
-        let now = cur.and_then(|c| list.cues.get(c)).map_or("Keine Szene aktiv".to_string(), |c| c.name.clone());
-        let next = list.cues.get(cur.map_or(0, |c| c + 1)).map(|c| c.name.clone());
         let full = ui.max_rect();
-        let prog = if cur.is_some() { e.fade_progress(i) } else { 0.0 };
-        ui.painter().rect_filled(egui::Rect::from_min_size(full.min, egui::vec2(full.width(), 3.0)), 0.0, theme::LINE);
-        ui.painter().rect_filled(egui::Rect::from_min_size(full.min, egui::vec2(full.width() * prog, 3.0)), 0.0, accent);
-        let h = full.height();
-        let left = egui::Rect::from_min_size(full.min + egui::vec2(8.0, 6.0), egui::vec2(full.width() * 0.3, h - 6.0));
+        ui.painter().line_segment([full.left_top(), full.right_top()], egui::Stroke::new(1.0, theme::LINE));
+        let left = egui::Rect::from_min_size(full.min + egui::vec2(10.0, 8.0), egui::vec2(188.0, full.height() - 16.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(left), |ui| {
-            ui.vertical(|ui| {
-                ui.add_space(8.0);
-                ui.label(RichText::new(short(&list.name, 24)).size(11.5).color(theme::MUTED));
-                ui.label(RichText::new(short(&now, 28)).size(16.0).strong());
-                if let Some(n) = next {
-                    ui.label(RichText::new(format!("Danach: {}", short(&n, 24))).size(12.0).color(theme::MUTED));
+            ui.label(RichText::new(short(&list.name, 22)).size(12.5).strong());
+            let now = cur.and_then(|c| list.cues.get(c)).map_or("— keine Szene —".to_string(), |c| short(&c.name, 22));
+            ui.label(RichText::new(now).size(12.0).color(if cur.is_some() { accent } else { theme::MUTED }));
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                let sz = egui::vec2(52.0, 42.0);
+                if ui.add(egui::Button::image(theme::icon("back", theme::TEXT, 18.0)).min_size(sz)).on_hover_text("Zurück (Backspace)").clicked() {
+                    play(acts, e, Action::Back(i));
+                }
+                if ui.add(egui::Button::image(theme::icon("play", Color32::BLACK, 20.0)).fill(accent).min_size(egui::vec2(64.0, 42.0))).on_hover_text("GO – nächste Szene (Leertaste)").clicked() {
+                    play(acts, e, Action::Go(i));
+                }
+                if ui.add(egui::Button::image(theme::icon("stop", theme::TEXT, 16.0)).min_size(sz)).on_hover_text("Liste ausschalten").clicked() {
+                    acts.push(Action::ReleaseList(i));
                 }
             });
         });
-        let mid = egui::Rect::from_center_size(full.center() + egui::vec2(0.0, 2.0), egui::vec2(200.0, h));
-        ui.scope_builder(egui::UiBuilder::new().max_rect(mid).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
-            ui.spacing_mut().item_spacing.x = 14.0;
-            if theme::round_btn(ui, "back", 40.0, theme::RAISED, theme::TEXT, "Zurück (Backspace)").clicked() {
-                play(acts, e, Action::Back(i));
-            }
-            if theme::round_btn(ui, "play", 56.0, accent, Color32::BLACK, "GO – nächste Szene (Leertaste)").clicked() {
-                play(acts, e, Action::Go(i));
-            }
-            if theme::round_btn(ui, "stop", 40.0, theme::RAISED, theme::TEXT, "Liste ausschalten").clicked() {
-                acts.push(Action::ReleaseList(i));
-            }
-        });
-        let right = egui::Rect::from_min_max(egui::pos2(full.right() - full.width() * 0.3, full.top()), full.max - egui::vec2(8.0, 0.0));
-        ui.scope_builder(egui::UiBuilder::new().max_rect(right).layout(egui::Layout::right_to_left(egui::Align::Center)), |ui| {
+        let rw = 200.0;
+        let right = egui::Rect::from_min_max(egui::pos2(full.right() - rw - 10.0, full.top() + 8.0), egui::pos2(full.right() - 10.0, full.bottom() - 8.0));
+        ui.scope_builder(egui::UiBuilder::new().max_rect(right), |ui| {
+            ui.label(RichText::new("LISTEN-PEGEL").size(10.5).color(theme::MUTED));
             let mut lvl = e.players.get(i).map_or(255, |p| p.level) as f32 / 2.55;
             ui.spacing_mut().slider_width = 110.0;
             if ui.add(egui::Slider::new(&mut lvl, 0.0..=100.0).fixed_decimals(0).suffix("%")).changed() {
                 acts.push(Action::SetLevel(i, (lvl * 2.55).round() as u8));
             }
-            ui.label(RichText::new("Liste").size(12.0).color(theme::MUTED));
             if !e.programmer.is_empty() {
-                if theme::button(ui, "Leeren").on_hover_text("Manuelle Werte überdecken die Szenen – leeren, um die Szenen zu sehen").clicked() {
-                    acts.push(Action::ClearProgrammer);
-                }
-                pill(ui, "Programmer aktiv", theme::DANGER);
+                ui.horizontal(|ui| {
+                    pill(ui, "Programmer", theme::DANGER);
+                    if theme::button(ui, "Leeren").on_hover_text("Manuelle Werte überdecken die Szenen – leeren, um die Szenen zu sehen").clicked() {
+                        acts.push(Action::ClearProgrammer);
+                    }
+                });
             }
+        });
+        let mid = egui::Rect::from_min_max(egui::pos2(full.left() + 208.0, full.top() + 8.0), egui::pos2(full.right() - rw - 20.0, full.bottom() - 8.0));
+        ui.scope_builder(egui::UiBuilder::new().max_rect(mid), |ui| {
+            if list.cues.is_empty() {
+                ui.label(RichText::new("Noch keine Szenen – im Pult einen Look einstellen und „Als Szene speichern“.").color(theme::MUTED));
+                return;
+            }
+            egui::ScrollArea::horizontal().id_salt("bank").auto_shrink([false, false]).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    for (k, c) in list.cues.iter().enumerate() {
+                        let live = cur == Some(k);
+                        let col = scenes::preview(e, c).into_iter().next().unwrap_or(theme::LINE);
+                        let prog = if live { Some(e.fade_progress(i)) } else { None };
+                        let r = theme::pad(ui, egui::vec2(116.0, 84.0), &(k + 1).to_string(), &short(&c.name, 14), col, live, theme::OK, prog);
+                        if r.clicked() {
+                            play(acts, e, Action::GotoCue(k));
+                        }
+                        r.on_hover_text(format!("{} · {:.1} s", c.name, c.fade));
+                    }
+                });
+            });
         });
     }
 
@@ -456,9 +466,19 @@ impl eframe::App for App {
         let narrow = ui.available_width() < 1150.0;
         let side_w = if narrow { 250.0 } else { 330.0 };
         let bar = egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(8, 0));
-        egui::Panel::top("top").exact_size(46.0).frame(bar).show(ui, |ui| self.top_bar(ui, &e, &mut acts, narrow));
-        let player = egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(8, 0));
-        egui::Panel::bottom("player").exact_size(84.0).frame(player).show(ui, |ui| self.player(ui, &e, &mut acts));
+        egui::Panel::top("top").exact_size(38.0).frame(bar).show(ui, |ui| self.top_bar(ui, &e, &mut acts, narrow));
+        let player = egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(0, 0));
+        egui::Panel::bottom("player").exact_size(108.0).frame(player).show(ui, |ui| self.player(ui, &e, &mut acts));
+        let rail = egui::Frame::new().fill(theme::PANEL);
+        egui::Panel::left("rail").exact_size(78.0).frame(rail).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            let accent = self.accent();
+            for (v, icon, name) in [(View::Pult, "sliders", "Pult"), (View::Scenes, "clapper", "Szenen"), (View::Stage, "stage", "Bühne"), (View::Patch, "plug", "Patch"), (View::Output, "cable", "Ausgabe")] {
+                if theme::rail_btn(ui, icon, name, self.view == v, accent).clicked() {
+                    self.view = v;
+                }
+            }
+        });
         if self.view == View::Pult {
             let side = egui::Frame::new().fill(theme::PANEL).inner_margin(12);
             egui::Panel::left("select").default_size(side_w).size_range(220.0..=480.0).frame(side).show(ui, |ui| {

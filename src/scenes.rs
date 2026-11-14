@@ -7,7 +7,7 @@ use lichtpult::engine::{Action, Cue, Engine};
 use lichtpult::fixture::Attr;
 
 /// Farbstreifen der Fixtures, die der Cue anfasst.
-fn preview(e: &Engine, cue: &Cue) -> Vec<Color32> {
+pub fn preview(e: &Engine, cue: &Cue) -> Vec<Color32> {
     cue.values
         .iter()
         .filter_map(|(id, vals)| {

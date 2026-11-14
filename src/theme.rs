@@ -1,15 +1,15 @@
 use eframe::egui::{self, Color32, CornerRadius, Rect, RichText, Stroke};
 
-pub const BG: Color32 = Color32::from_rgb(22, 22, 22);
-pub const PANEL: Color32 = Color32::from_rgb(33, 33, 33);
-pub const RAISED: Color32 = Color32::from_rgb(48, 48, 48);
-pub const LINE: Color32 = Color32::from_rgb(66, 66, 66);
+pub const BG: Color32 = Color32::from_rgb(12, 12, 13);
+pub const PANEL: Color32 = Color32::from_rgb(24, 24, 25);
+pub const RAISED: Color32 = Color32::from_rgb(46, 46, 48);
+pub const LINE: Color32 = Color32::from_rgb(74, 74, 77);
 pub const TEXT: Color32 = Color32::from_rgb(244, 244, 244);
 pub const MUTED: Color32 = Color32::from_rgb(168, 168, 168);
 pub const DANGER: Color32 = Color32::from_rgb(250, 77, 86);
 pub const OK: Color32 = Color32::from_rgb(66, 190, 101);
 
-pub const HOVER: Color32 = Color32::from_rgb(64, 64, 64);
+pub const HOVER: Color32 = Color32::from_rgb(66, 66, 69);
 
 pub const PRESETS: [[u8; 3]; 6] = [
     [0, 170, 255],
@@ -22,10 +22,10 @@ pub const PRESETS: [[u8; 3]; 6] = [
 
 pub fn apply(ctx: &egui::Context, accent: Color32) {
     let mut v = egui::Visuals::dark();
-    let r = CornerRadius::same(4);
+    let r = CornerRadius::same(1);
     v.panel_fill = PANEL;
     v.window_fill = PANEL;
-    v.extreme_bg_color = Color32::from_rgb(14, 14, 14);
+    v.extreme_bg_color = Color32::from_rgb(8, 8, 8);
     v.faint_bg_color = RAISED;
     v.window_stroke = Stroke::new(1.0, LINE);
     v.override_text_color = Some(TEXT);
@@ -50,13 +50,13 @@ pub fn apply(ctx: &egui::Context, accent: Color32) {
     ctx.set_visuals(v);
 
     ctx.global_style_mut(|s| {
-        s.spacing.item_spacing = egui::vec2(8.0, 8.0);
-        s.spacing.button_padding = egui::vec2(12.0, 5.0);
-        s.spacing.interact_size.y = 30.0;
+        s.spacing.item_spacing = egui::vec2(6.0, 6.0);
+        s.spacing.button_padding = egui::vec2(10.0, 4.0);
+        s.spacing.interact_size.y = 28.0;
         s.spacing.slider_width = 320.0;
         s.interaction.tooltip_delay = 0.15;
-        s.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(14.0));
-        s.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
+        s.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(13.5));
+        s.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(13.5));
         s.text_styles.insert(egui::TextStyle::Small, egui::FontId::proportional(12.0));
         s.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(13.0));
         s.text_styles.insert(egui::TextStyle::Heading, egui::FontId::proportional(18.0));
@@ -138,8 +138,8 @@ pub fn card_info<R>(ui: &mut egui::Ui, title: &str, help: &str, add: impl FnOnce
     egui::Frame::new()
         .fill(PANEL)
         .stroke(Stroke::new(1.0, LINE))
-        .corner_radius(4)
-        .inner_margin(16)
+        .corner_radius(1)
+        .inner_margin(12)
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             if !title.is_empty() {
@@ -189,6 +189,11 @@ fn icon_source(name: &str) -> egui::ImageSource<'static> {
         "dist-v" => include_bytes!("../assets/icons/align-vertical-distribute-center.svg"),
         "rotate" => include_bytes!("../assets/icons/rotate-cw.svg"),
         "grid" => include_bytes!("../assets/icons/layout-grid.svg"),
+        "sliders" => include_bytes!("../assets/icons/sliders-vertical.svg"),
+        "clapper" => include_bytes!("../assets/icons/clapperboard.svg"),
+        "stage" => include_bytes!("../assets/icons/drama.svg"),
+        "plug" => include_bytes!("../assets/icons/plug.svg"),
+        "cable" => include_bytes!("../assets/icons/cable.svg"),
         _ => include_bytes!("../assets/icons/layers.svg"),
     };
     egui::ImageSource::Bytes { uri: format!("bytes://{name}.svg").into(), bytes: bytes.into() }
@@ -266,4 +271,54 @@ pub fn round_btn(ui: &mut egui::Ui, name: &str, diameter: f32, fill: Color32, ic
 /// Normaler Knopf mit Mindestgröße, damit nichts gequetscht wirkt.
 pub fn button(ui: &mut egui::Ui, text: &str) -> egui::Response {
     ui.add(egui::Button::new(text).min_size(egui::vec2(64.0, 30.0)))
+}
+
+/// Farbe der Attributgruppe (Reiter, Pad-Streifen) – wie bei Lichtpulten üblich.
+pub fn kind_color(k: lichtpult::fixture::Kind) -> Color32 {
+    use lichtpult::fixture::Kind::*;
+    match k {
+        Intensity => Color32::from_rgb(232, 64, 64),
+        Position => Color32::from_rgb(226, 96, 176),
+        Color => Color32::from_rgb(70, 196, 96),
+        Beam => Color32::from_rgb(72, 130, 255),
+    }
+}
+
+/// Flaches Pad im Pultstil: Farbstreifen oben, Nummer links oben, Name mittig.
+/// `live` = Wert 0..1 für einen Pegelbalken unten.
+pub fn pad(ui: &mut egui::Ui, size: egui::Vec2, num: &str, label: &str, strip: Color32, on: bool, accent: Color32, live: Option<f32>) -> egui::Response {
+    let (rect, r) = ui.allocate_exact_size(size, egui::Sense::click());
+    let p = ui.painter();
+    let fill = if on { Color32::from_rgb(70, 70, 74) } else if r.hovered() { HOVER } else { RAISED };
+    p.rect_filled(rect, 1.0, fill);
+    p.rect_filled(Rect::from_min_size(rect.min, egui::vec2(rect.width(), 4.0)), 0.0, strip);
+    p.rect_stroke(rect, 1.0, Stroke::new(if on { 2.0 } else { 1.0 }, if on { accent } else { Color32::from_rgb(20, 20, 20) }), egui::StrokeKind::Inside);
+    if !num.is_empty() {
+        p.text(rect.left_top() + egui::vec2(5.0, 7.0), egui::Align2::LEFT_TOP, num, egui::FontId::proportional(10.5), MUTED);
+    }
+    p.text(rect.center() + egui::vec2(0.0, 4.0), egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(12.5), TEXT);
+    if let Some(v) = live {
+        let bar = Rect::from_min_size(rect.left_bottom() + egui::vec2(4.0, -5.0), egui::vec2(rect.width() - 8.0, 2.5));
+        p.rect_filled(bar, 0.0, Color32::from_rgb(20, 20, 20));
+        let mut f = bar;
+        f.set_width(bar.width() * v.clamp(0.0, 1.0));
+        p.rect_filled(f, 0.0, strip);
+    }
+    r
+}
+
+/// Navigationsknopf der linken Leiste: Icon über Text, aktiv = Akzentbalken links.
+pub fn rail_btn(ui: &mut egui::Ui, icon_name: &str, text: &str, on: bool, accent: Color32) -> egui::Response {
+    let (rect, r) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 64.0), egui::Sense::click());
+    let p = ui.painter();
+    if on {
+        p.rect_filled(rect, 0.0, RAISED);
+        p.rect_filled(Rect::from_min_size(rect.min, egui::vec2(3.0, rect.height())), 0.0, accent);
+    } else if r.hovered() {
+        p.rect_filled(rect, 0.0, Color32::from_rgb(34, 34, 36));
+    }
+    let col = if on { TEXT } else { MUTED };
+    icon(icon_name, col, 22.0).paint_at(ui, Rect::from_center_size(rect.center() - egui::vec2(0.0, 9.0), egui::vec2(22.0, 22.0)));
+    ui.painter().text(rect.center() + egui::vec2(0.0, 16.0), egui::Align2::CENTER_CENTER, text, egui::FontId::proportional(11.5), col);
+    r
 }
